@@ -14,19 +14,17 @@ final class DiffusionJenkinsHookAPIMethod
   public function defineParamTypes() {
     return array(
       'callsign'    => 'required string',
-      'commit'      => 'required string',
       'jobName'     => 'required string',
       'buildNumber' => 'required int',
     );
   }
 
   public function defineReturnType() {
-    return 'bool';
+    return 'array';
   }
 
   public function defineErrorTypes() {
     return array(
-      'ERR_MISSING_COMMIT' => pht('Commit identifier is required'),
       'ERR_BAD_COMMIT' => pht('No commit found with that identifier'),
       'ERR_MISSING_JOB' => pht('Job is required.'),
       'ERR_BAD_JOB' => pht('Job not found.'),
@@ -36,11 +34,6 @@ final class DiffusionJenkinsHookAPIMethod
   }
 
   protected function execute(ConduitAPIRequest $request) {
-    $commit_identifier = $request->getValue('commit');
-    if (!$commit_identifier) {
-      throw new ConduitException('ERR_MISSING_COMMIT');
-    }
-
     $job_name = $request->getValue('jobName');
     if (!$job_name) {
       throw new ConduitException('ERR_MISSING_JOB');
@@ -50,6 +43,14 @@ final class DiffusionJenkinsHookAPIMethod
     if (!$build_number) {
       throw new ConduitException('ERR_MISSING_BUILD');
     }
+
+    // Get Job Info.
+    $job_info = JenkinsAPIRequest::create()
+      ->addJob($job_name)
+      ->addBuild($build_number)
+      ->query();
+
+    $commit_identifier = $job_info->changeSet->items[0]->revision;
 
     $drequest = DiffusionRequest::newFromDictionary(array(
       'user' => $request->getUser(),
@@ -66,7 +67,11 @@ final class DiffusionJenkinsHookAPIMethod
 
     if ($property) {
       // Don't record same build twice.
-      return false;
+      return array(
+        'commitUri' => (string)$drequest->generateURI(
+          array('action' => 'commit')),
+        'actionTaken' => false,
+      );
     }
 
     $commit_paths = $this->getCommitFiles($drequest);
@@ -81,23 +86,26 @@ final class DiffusionJenkinsHookAPIMethod
     $pmd_warnings =
       id(new JenkinsWarnings($job_name, $build_number, 'pmdResult'))
       ->get($commit_paths);
-    $this->setCommitProperty($commit, 'checkstyle:warnings', $pmd_warnings);
+    $this->setCommitProperty($commit, 'pmd:warnings', $pmd_warnings);
 
     // 3. record build information
-    $job_info = JenkinsAPIRequest::create()
-      ->addJob($job_name)
-      ->addBuild($build_number)
-      ->query();
-
     $message = <<<MESSAGE
     Build **#{$job_info->number}** finished with **{$job_info->result}** status: {$job_info->url}
 MESSAGE;
-    $this->addComment($commit, $request, $message);
+    $this->addComment(
+      $commit, $request, $message,
+      count($checkstyle_warnings) + count($pmd_warnings) == 0);
 
     // 4. mark as processed
     $this->setCommitProperty($commit, 'build-recorded', true);
 
-    return true;
+    return array(
+      'commitUri' => (string)$drequest->generateURI(
+        array('action' => 'commit')),
+      'checkstyleWarningCount' => count($checkstyle_warnings),
+      'pmdWarningCount' => count($pmd_warnings),
+      'actionTaken' => true,
+    );
   }
 
   private function getCommitFiles(DiffusionRequest $drequest) {
@@ -143,13 +151,15 @@ MESSAGE;
   private function addComment(
     PhabricatorRepositoryCommit $commit,
     ConduitAPIRequest $request,
-    $message) {
+    $message,
+    $silent = false) {
 
     $conduit_call = new ConduitCall(
       'diffusion.createcomment',
       array(
         'phid' => $commit->getPHID(),
         'message' => $message,
+        'silent' => $silent,
       ));
 
     $conduit_call
