@@ -88,21 +88,25 @@ final class DiffusionDiffController extends DiffusionController {
     $parser->setWhitespaceMode(
       DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
 
-    $inlines = PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
+    $inlines = array_merge(PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
       $user,
       $drequest->loadCommit()->getPHID(),
-      $path_id) +
+      $path_id),
     $this->getLintMessages(
       $drequest->loadCommit(),
       $changeset->getFilename(),
-      $path_id);
+      $path_id));
 
     if ($inlines) {
+      $phids = array();
       foreach ($inlines as $inline) {
         $parser->parseInlineComment($inline);
+        if ($inline->getAuthorPHID()) {
+          $phids[$inline->getAuthorPHID()] = true;
+        }
       }
+      $phids = array_keys($phids);
 
-      $phids = mpull($inlines, 'getAuthorPHID');
       $handles = $this->loadViewerHandles($phids);
       $parser->setHandles($handles);
     }

@@ -46,14 +46,16 @@ final class JenkinsWarnings {
 
   private function filter(array $warnings, array $allowed_files) {
     $filtered_warnings = array();
-    $allowed_files = array_flip($allowed_files);
 
+    // Make sure, that filename in warnings array exactly matches
+    // one, that is used in commit.
     foreach ($warnings as $file => $file_warnings) {
-      if (!idx($allowed_files, $file)) {
-        continue;
+      foreach ($allowed_files as $allowed_file) {
+        if (substr($allowed_file, (-1) * strlen($file)) == $file) {
+          $filtered_warnings[$allowed_file] = $file_warnings;
+          break;
+        }
       }
-
-      $filtered_warnings[$file] = $file_warnings;
     }
 
     return $filtered_warnings;
