@@ -261,7 +261,8 @@ final class PhabricatorAuditInlineComment
 
 
   public function getMarkupFieldKey($field) {
-    return 'AI:'.$this->getID();
+    // We can't use ID because synthetic comments don't have it.
+    return 'AI:'.PhabricatorHash::digest($this->getContent());
   }
 
   public function newMarkupEngine($field) {
