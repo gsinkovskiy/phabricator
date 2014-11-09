@@ -50,7 +50,7 @@ final class DiffusionJenkinsHookAPIMethod
       ->addBuild($build_number)
       ->query();
 
-    $commit_identifier = $job_info->changeSet->items[0]->revision;
+    $commit_identifier = $this->guessRevision($job_info);
 
     $drequest = DiffusionRequest::newFromDictionary(array(
       'user' => $request->getUser(),
@@ -69,7 +69,7 @@ final class DiffusionJenkinsHookAPIMethod
       // Don't record same build twice.
       return array(
         'commitUri' => (string)$drequest->generateURI(
-          array('action' => 'commit')),
+          array('action' => 'commit', 'stable' => true)),
         'actionTaken' => false,
       );
     }
@@ -92,6 +92,19 @@ final class DiffusionJenkinsHookAPIMethod
     $message = <<<MESSAGE
     Build **#{$job_info->number}** finished with **{$job_info->result}** status: {$job_info->url}
 MESSAGE;
+
+    if ($checkstyle_warnings || $pmd_warnings) {
+      $message .= "\n";
+
+      if ($checkstyle_warnings) {
+        $message .= "\nCheckstyle Warnings: **".count($checkstyle_warnings).'**';
+      }
+
+      if ($pmd_warnings) {
+        $message .= "\nPMD Warnings: **".count($pmd_warnings).'**';
+      }
+    }
+
     $this->addComment(
       $commit, $request, $message,
       count($checkstyle_warnings) + count($pmd_warnings) == 0);
@@ -101,11 +114,28 @@ MESSAGE;
 
     return array(
       'commitUri' => (string)$drequest->generateURI(
-        array('action' => 'commit')),
+        array('action' => 'commit', 'stable' => true)),
       'checkstyleWarningCount' => count($checkstyle_warnings),
       'pmdWarningCount' => count($pmd_warnings),
       'actionTaken' => true,
     );
+  }
+
+  private function guessRevision($job_info) {
+    if ($job_info->changeSet->items) {
+      // Build triggered by commit > take it's revision.
+      return $job_info->changeSet->items[0]->revision;
+    }
+
+    // Build triggered manually > get "trunk/stable tag" revision.
+    foreach ($job_info->changeSet->revisions as $revision) {
+      if (preg_match('/(trunk|tags\/stable)$/', $revision->module)) {
+        return $revision->revision;
+      }
+    }
+
+    $message = 'Unable to determine revision from build "%s" information';
+    throw new Exception(sprintf($message, $job_info->fullDisplayName));
   }
 
   private function getCommitFiles(DiffusionRequest $drequest) {
