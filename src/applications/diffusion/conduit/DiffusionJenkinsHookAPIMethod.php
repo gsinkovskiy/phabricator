@@ -63,45 +63,60 @@ final class DiffusionJenkinsHookAPIMethod
       throw new ConduitException('ERR_BAD_COMMIT');
     }
 
+    $commit_url = PhabricatorEnv::getEnvConfig('phabricator.base-uri').
+      $drequest->generateURI(array('action' => 'commit', 'stable' => true));
+
     $property = $this->getCommitProperty($commit, 'build-recorded');
 
     if ($property) {
       // Don't record same build twice.
       return array(
-        'commitUri' => (string)$drequest->generateURI(
-          array('action' => 'commit', 'stable' => true)),
+        'commitUri' => $commit_url,
         'actionTaken' => false,
       );
     }
 
     $commit_paths = $this->getCommitFiles($drequest);
 
+    $api_request = new JenkinsAPIRequest();
+    $api_request
+      ->addJob($job_name)
+      ->addBuild($build_number)
+      ->setSuffix('submitDescription')
+      ->setExpects('')
+      ->setParams(array(
+      	'description' => '<a href="'.$commit_url.'" target="_blank">'.$commit_url.'</a>',
+      ))
+      ->query();
+
     // 1. record checkstyle warnings
     $checkstyle_warnings =
       id(new JenkinsWarnings($job_name, $build_number, 'checkstyleResult'))
       ->get($commit_paths);
     $this->setCommitProperty($commit, 'checkstyle:warnings', $checkstyle_warnings);
+    $checkstyle_warning_count = $this->computeWarningCount($checkstyle_warnings);
 
     // 2. record pmd warnings
     $pmd_warnings =
       id(new JenkinsWarnings($job_name, $build_number, 'pmdResult'))
       ->get($commit_paths);
     $this->setCommitProperty($commit, 'pmd:warnings', $pmd_warnings);
+    $pmd_warning_count = $this->computeWarningCount($pmd_warnings);
 
     // 3. record build information
     $message = <<<MESSAGE
     Build **#{$job_info->number}** finished with **{$job_info->result}** status: {$job_info->url}
 MESSAGE;
 
-    if ($checkstyle_warnings || $pmd_warnings) {
+    if ($checkstyle_warning_count || $pmd_warning_count) {
       $message .= "\n";
 
-      if ($checkstyle_warnings) {
-        $message .= "\nCheckstyle Warnings: **".count($checkstyle_warnings).'**';
+      if ($checkstyle_warning_count) {
+        $message .= "\nCheckstyle Warnings: **".$checkstyle_warning_count.'**';
       }
 
-      if ($pmd_warnings) {
-        $message .= "\nPMD Warnings: **".count($pmd_warnings).'**';
+      if ($pmd_warning_count) {
+        $message .= "\nPMD Warnings: **".$pmd_warning_count.'**';
       }
     }
 
@@ -113,10 +128,9 @@ MESSAGE;
     $this->setCommitProperty($commit, 'build-recorded', true);
 
     return array(
-      'commitUri' => (string)$drequest->generateURI(
-        array('action' => 'commit', 'stable' => true)),
-      'checkstyleWarningCount' => count($checkstyle_warnings),
-      'pmdWarningCount' => count($pmd_warnings),
+      'commitUri' => $commit_url,
+      'checkstyleWarningCount' => $checkstyle_warning_count,
+      'pmdWarningCount' => $pmd_warning_count,
       'actionTaken' => true,
     );
   }
@@ -176,6 +190,16 @@ MESSAGE;
       $name);
 
     return $property;
+  }
+
+  private function computeWarningCount(array $warnings) {
+    $count = 0;
+
+    foreach ($warnings as $file => $file_warnings) {
+      $count += count($file_warnings);
+    }
+
+    return $count;
   }
 
   private function addComment(
