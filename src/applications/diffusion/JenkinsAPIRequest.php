@@ -44,6 +44,12 @@ final class JenkinsAPIRequest
     return $this;
   }
 
+  public function setExpects($expects) {
+    $this->expects = $expects;
+
+    return $this;
+  }
+
   /**
    * @phutil-external-symbol class \Httpful\Request
    */
@@ -62,13 +68,24 @@ final class JenkinsAPIRequest
       /** @var \Httpful\Response $response */
       $response = \Httpful\Request::get($url, $this->expects)
         ->authenticateWith($user_id, $api_token)
+        ->autoParse(false)
         ->send();
+
+      if ($response->code == 404) {
+        // No data at this API url.
+        return null;
+      }
 
       if ($response->hasErrors()) {
         throw new Exception('Jenkins request failed with '.$response->code.' HTTP code');
       }
 
-      $this->response = $response->body;
+      if ($this->expects == 'json') {
+        $this->response = json_decode($response->body);
+      } else {
+        $this->response = $response->body;
+      }
+
       file_put_contents($cache_file, serialize($this->response));
     }
 
@@ -94,7 +111,9 @@ final class JenkinsAPIRequest
       $url .= '/' . $this->suffix;
     }
 
-    $url .= '/api/'.$this->expects;
+    if ($this->expects) {
+      $url .= '/api/'.$this->expects;
+    }
 
     if ($this->params) {
       $url .= '?'.http_build_query($this->params);

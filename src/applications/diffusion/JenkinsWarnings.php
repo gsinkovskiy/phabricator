@@ -12,10 +12,15 @@ final class JenkinsWarnings {
   }
 
   public function get(array $file_filter) {
-    $raw_warnings = $this->apiRequest
+    $response = $this->apiRequest
       ->setParams(array('tree' => 'warnings[*]'))
-      ->query()
-      ->warnings;
+      ->query();
+
+    $raw_warnings = $response->warnings;
+
+    if (!$raw_warnings) {
+      return array();
+    }
 
     return $this->filter($this->groupByFile($raw_warnings), $file_filter);
   }
