@@ -1,0 +1,123 @@
+<?php
+
+final class HarbormasterNotifyJenkinsBuildStepImplementation
+  extends HarbormasterBuildStepImplementation {
+
+  private $build;
+  private $buildTarget;
+  private $drequest;
+
+  public function getName() {
+    return pht('Notify Jenkins');
+  }
+
+  public function getGenericDescription() {
+    return pht('Notify Jenkins about a new commit.');
+  }
+
+  public function execute(
+    HarbormasterBuild $build,
+    HarbormasterBuildTarget $build_target) {
+
+    $this->build = $build;
+    $this->buildTarget = $build_target;
+
+    $variables = $build_target->getVariables();
+
+    $this->drequest = DiffusionRequest::newFromDictionary(array(
+      'user' => PhabricatorUser::getOmnipotentUser(),
+      'callsign' => $variables['repository.callsign'],
+      'commit' => $variables['buildable.commit'],
+    ));
+
+    $this->notifyJenkins();
+  }
+
+  protected function notifyJenkins() {
+    $repository = $this->drequest->getRepository();
+
+    switch ($repository->getVersionControlSystem()) {
+      case PhabricatorRepositoryType::REPOSITORY_TYPE_GIT:
+        $this->notifyGit();
+        break;
+      case PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL:
+        $this->notifyMercurial();
+        break;
+      case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
+        $this->notifySVN();
+        break;
+      default:
+        throw new ConduitException('ERR-UNKNOWN-VCS-TYPE');
+        break;
+    }
+  }
+
+  protected function notifyGit() {
+    throw new ConduitException('ERR-UNSUPPORTED-VCS');
+  }
+
+  protected function notifySVN() {
+    $uri = 'http://'.PhabricatorEnv::getEnvConfig('jenkins.host');
+    $uri .= '/subversion/%s/notifyCommit?rev=%s';
+
+    $uri = vsprintf($uri, array(
+      $this->drequest->getRepository()->getUuid(),
+      $this->drequest->getCommit(),
+    ));
+
+    $log_body = $this->build->createLog($this->buildTarget, $uri, 'http-body');
+    $start = $log_body->start();
+
+    $future = id(new HTTPSFuture($uri, $this->getSvnLookOutput()))
+      ->setMethod('POST')
+      ->addHeader('Content-Type', 'text/plain;charset=UTF-8')
+      ->setTimeout(30);
+
+    list($status, $body, $headers) = $this->resolveFuture(
+      $this->build,
+      $this->buildTarget,
+      $future);
+
+    $log_body->append($body);
+    $log_body->finalize($start);
+
+    if ($status->getStatusCode() != 200) {
+      $this->build->setBuildStatus(HarbormasterBuild::STATUS_FAILED);
+    }
+  }
+
+  private function getSvnLookOutput() {
+    $path_change_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
+      $this->drequest);
+    $path_changes = $path_change_query->loadChanges();
+
+    $svnlook_output = '';
+
+    foreach ($path_changes as $change) {
+      $svnlook_output .= $this->getSvnLookChangeLetter($change->getChangeType())
+        .'  '
+        .$change->getPath()
+        ."\n";
+    }
+
+    return $svnlook_output;
+  }
+
+  private function getSvnLookChangeLetter($change_type) {
+
+    if ($change_type == DifferentialChangeType::TYPE_ADD) {
+      return 'A ';
+    }
+
+    if ($change_type == DifferentialChangeType::TYPE_DELETE) {
+      return 'D ';
+    }
+
+    return 'U ';
+  }
+
+  protected function notifyMercurial() {
+    throw new ConduitException('ERR-UNSUPPORTED-VCS');
+  }
+
+}
