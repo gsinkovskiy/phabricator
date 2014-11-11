@@ -53,6 +53,7 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
   }
 
   protected function notifyGit() {
+    // TODO: https://wiki.jenkins-ci.org/display/JENKINS/Git+Plugin
     throw new ConduitException('ERR-UNSUPPORTED-VCS');
   }
 
@@ -117,6 +118,7 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
   }
 
   protected function notifyMercurial() {
+    // TODO: https://wiki.jenkins-ci.org/display/JENKINS/Mercurial+Plugin
     throw new ConduitException('ERR-UNSUPPORTED-VCS');
   }
 
