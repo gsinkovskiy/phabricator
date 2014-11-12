@@ -72,13 +72,28 @@ final class DiffusionLowLevelParentsQuery
 
   private function loadSubversionParents() {
     $n = (int)$this->identifier;
-    if ($n > 1) {
-      $ids = array($n - 1);
-    } else {
-      $ids = array();
+
+    if ($n <= 1) {
+      return array();
     }
 
-    return $ids;
+    $ids = array($n - 1);
+    $repository = $this->getRepository();
+
+    // For fully imported repositories "$n - 1" assumption is always correct.
+    $subpath = $repository->getDetail('svn-subpath');
+    if (!strlen($subpath)) {
+      return $ids;
+    }
+
+    list($xml) = $repository->execxRemoteCommand(
+              'log %s --xml --revision %d:1 --limit 1',
+              $repository->getSubversionBaseURI(),
+              head($ids));
+
+    $log = new SimpleXMLElement($xml);
+
+    return array((int)$log->logentry['revision']);
   }
 
 }
