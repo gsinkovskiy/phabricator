@@ -95,26 +95,33 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
     $svnlook_output = '';
 
     foreach ($path_changes as $change) {
-      $svnlook_output .= $this->getSvnLookChangeLetter($change->getChangeType())
-        .'  '
-        .$change->getPath()
-        ."\n";
+      $path = $change->getPath();
+
+      if ($change->getFileType() == DifferentialChangeType::FILE_DIRECTORY) {
+        $path .= '/';
+      }
+
+      $change_letter = $this->getSvnLookChangeLetter($change->getChangeType());
+      $svnlook_output .= $change_letter.'  '.$path."\n";
     }
 
     return $svnlook_output;
   }
 
   private function getSvnLookChangeLetter($change_type) {
+    switch ($change_type) {
+      case DifferentialChangeType::TYPE_ADD:
+      case DifferentialChangeType::TYPE_MOVE_HERE:
+      case DifferentialChangeType::TYPE_COPY_HERE:
+        return 'A ';
 
-    if ($change_type == DifferentialChangeType::TYPE_ADD) {
-      return 'A ';
+      case DifferentialChangeType::TYPE_DELETE:
+      case DifferentialChangeType::TYPE_MOVE_AWAY:
+        return 'D ';
+
+      default:
+        return 'U ';
     }
-
-    if ($change_type == DifferentialChangeType::TYPE_DELETE) {
-      return 'D ';
-    }
-
-    return 'U ';
   }
 
   protected function notifyMercurial() {
