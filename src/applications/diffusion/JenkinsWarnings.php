@@ -41,12 +41,19 @@ final class JenkinsWarnings {
       // Decode due https://github.com/squizlabs/PHP_CodeSniffer/issues/315
       $grouped_warnings[$file_name][] = array(
         'line' => $raw_warning->primaryLineNumber,
-        'message' => htmlspecialchars_decode($raw_warning->message, ENT_QUOTES),
+        'message' => $this->decodeMessage($raw_warning->message),
         'priority' => $raw_warning->priority,
       );
     }
 
     return $grouped_warnings;
+  }
+
+  private function decodeMessage($message) {
+    // See https://issues.jenkins-ci.org/browse/JENKINS-25511
+    $message = str_replace('&apos;', '&#39;', $message);
+
+    return htmlspecialchars_decode($message, ENT_QUOTES);
   }
 
   private function filter(array $warnings, array $allowed_files) {
