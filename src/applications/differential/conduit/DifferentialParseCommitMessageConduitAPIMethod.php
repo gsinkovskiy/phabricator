@@ -128,11 +128,14 @@ final class DifferentialParseCommitMessageConduitAPIMethod
   private function parseCommitMessage($corpus, array $label_map) {
     $key_title = id(new DifferentialTitleField())->getFieldKeyForConduit();
     $key_summary = id(new DifferentialSummaryField())->getFieldKeyForConduit();
+    $key_jira_issues = id(new DifferentialJIRAIssuesField())
+      ->getFieldKeyForConduit();
 
     $parser = id(new DifferentialCommitMessageParser())
       ->setLabelMap($label_map)
       ->setTitleKey($key_title)
-      ->setSummaryKey($key_summary);
+      ->setSummaryKey($key_summary)
+      ->setJiraIssuesKey($key_jira_issues);
 
     $result = $parser->parseCorpus($corpus);
 

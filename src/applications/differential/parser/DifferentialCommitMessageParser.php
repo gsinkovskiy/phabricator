@@ -24,6 +24,7 @@ final class DifferentialCommitMessageParser {
   private $labelMap;
   private $titleKey;
   private $summaryKey;
+  private $jiraIssuesKey;
   private $errors;
 
 
@@ -57,6 +58,15 @@ final class DifferentialCommitMessageParser {
   }
 
 
+  /**
+   * @task config
+   */
+  public function setJiraIssuesKey($jira_issues_key) {
+    $this->jiraIssuesKey = $jira_issues_key;
+    return $this;
+  }
+
+
 /* -(  Parsing Messages  )--------------------------------------------------- */
 
 
@@ -69,6 +79,7 @@ final class DifferentialCommitMessageParser {
     $label_map = $this->labelMap;
     $key_title = $this->titleKey;
     $key_summary = $this->summaryKey;
+    $key_jira_issues = $this->jiraIssuesKey;
 
     if (!$key_title || !$key_summary || ($label_map === null)) {
       throw new Exception(
@@ -170,7 +181,24 @@ final class DifferentialCommitMessageParser {
       }
     }
 
+    // Detect JIRA issue keys in commit message.
+    if (in_array($this->jiraIssuesKey, $label_map)
+      && !idx($fields, $this->jiraIssuesKey)) {
+      $jira_issues = $this->extractJiraIssues($corpus);
+      if ($jira_issues) {
+        $fields[$this->jiraIssuesKey] = $jira_issues;
+      }
+    }
+
     return $fields;
+  }
+
+
+  private function extractJiraIssues($corpus) {
+    $parts = null;
+    preg_match_all('/\b[[:upper:]]+\-\d+\b/', $corpus, $parts);
+
+    return implode(', ', $parts[0]);
   }
 
 
