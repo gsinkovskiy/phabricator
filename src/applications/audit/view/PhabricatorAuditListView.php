@@ -9,6 +9,9 @@ final class PhabricatorAuditListView extends AphrontView {
 
   private $highlightedAudits;
 
+  private $commitAudits = array();
+  private $commitAuditorsHTML = array();
+
   public function setHandles(array $handles) {
     assert_instances_of($handles, 'PhabricatorObjectHandle');
     $this->handles = $handles;
@@ -102,33 +105,36 @@ final class PhabricatorAuditListView extends AphrontView {
     }
     $rowc = array();
 
+    $this->prepareAuditorInformation();
+    $modification_dates = $this->getCommitsDateModified();
+
+    $fresh = PhabricatorEnv::getEnvConfig('differential.days-fresh');
+    if ($fresh) {
+      $fresh = PhabricatorCalendarHoliday::getNthBusinessDay(
+        time(),
+        -$fresh);
+    }
+
+    $stale = PhabricatorEnv::getEnvConfig('differential.days-stale');
+    if ($stale) {
+      $stale = PhabricatorCalendarHoliday::getNthBusinessDay(
+        time(),
+        -$stale);
+    }
+
+    $this->initBehavior('phabricator-tooltips', array());
+    $this->requireResource('aphront-tooltip-css');
+
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
       $commit_phid = $commit->getPHID();
       $commit_handle = $this->getHandle($commit_phid);
-      $committed = null;
 
       $commit_name = $commit_handle->getName();
       $commit_link = $commit_handle->getURI();
       $commit_desc = $this->getCommitDescription($commit_phid);
-      $committed = phabricator_datetime($commit->getEpoch(), $user);
 
-      $audits = mpull($commit->getAudits(), null, 'getAuditorPHID');
-      $auditors = array();
-      $reasons = array();
-      foreach ($audits as $audit) {
-        $auditor_phid = $audit->getAuditorPHID();
-        $auditors[$auditor_phid] =
-          $this->getHandle($auditor_phid)->renderLink();
-      }
-      $auditors = phutil_implode_html(', ', $auditors);
-
-      $authority_audits = array_select_keys($audits, $this->authorityPHIDs);
-      if ($authority_audits) {
-        $audit = reset($authority_audits);
-      } else {
-        $audit = reset($audits);
-      }
+      $audit = idx($this->commitAudits, $commit_phid);
       if ($audit) {
         $reasons = $audit->getAuditReasons();
         $reasons = phutil_implode_html(', ', $reasons);
@@ -145,15 +151,33 @@ final class PhabricatorAuditListView extends AphrontView {
       $author_name = $commit->getCommitData()->getAuthorName();
 
       $item = id(new PHUIObjectItemView())
+        ->setUser($user)
         ->setObjectName($commit_name)
         ->setHeader($commit_desc)
         ->setHref($commit_link)
         ->setBarColor($status_color)
         ->addAttribute($status_text)
-        ->addAttribute($reasons)
-        ->addIcon('none', $committed)
-        ->addByline(pht('Author: %s', $author_name));
+        ->addAttribute($reasons);
 
+      if (idx($modification_dates, $commit_phid)) {
+        $modified = $modification_dates[$commit_phid];
+
+        if ($stale && $modified < $stale) {
+          $object_age = PHUIObjectItemView::AGE_OLD;
+        } else if ($fresh && $modified < $fresh) {
+          $object_age = PHUIObjectItemView::AGE_STALE;
+        } else {
+          $object_age = PHUIObjectItemView::AGE_FRESH;
+        }
+
+        $item->setEpoch($modified, $object_age);
+      } else {
+        $item->setEpoch($commit->getEpoch());
+      }
+
+      $item->addByline(pht('Author: %s', $author_name));
+
+      $auditors = idx($this->commitAuditorsHTML, $commit_phid, array());
       if (!empty($auditors)) {
         $item->addAttribute(pht('Auditors: %s', $auditors));
       }
@@ -166,6 +190,77 @@ final class PhabricatorAuditListView extends AphrontView {
     }
 
     return $list;
+  }
+
+  private function prepareAuditorInformation() {
+    foreach ($this->commits as $commit) {
+      $auditors = array();
+      $audits = mpull($commit->getAudits(), null, 'getAuditorPHID');
+
+      foreach ($audits as $audit) {
+        $auditor_phid = $audit->getAuditorPHID();
+        $auditors[$auditor_phid] =
+          $this->getHandle($auditor_phid)->renderLink();
+      }
+
+      $commit_phid = $commit->getPHID();
+      $this->commitAuditorsHTML[$commit_phid] =
+        phutil_implode_html(', ', $auditors);
+
+      $authority_audits = array_select_keys($audits, $this->authorityPHIDs);
+      if ($authority_audits) {
+        $this->commitAudits[$commit_phid] = reset($authority_audits);
+      } else {
+        $this->commitAudits[$commit_phid] = reset($audits);
+      }
+    }
+
+    $this->commitAuditorsHTML = array_filter($this->commitAuditorsHTML);
+    $this->commitAudits = array_filter($this->commitAudits);
+  }
+
+  private function getCommitsDateModified() {
+    $commit_phids = array();
+    $modification_dates = array();
+
+    $statuses = array(
+      PhabricatorAuditStatusConstants::AUDIT_REQUIRED => true,
+      PhabricatorAuditStatusConstants::CONCERNED => true,
+      PhabricatorAuditStatusConstants::AUDIT_REQUESTED => true,
+    );
+
+    foreach ($this->commitAudits as $commit_phid => $audit) {
+      if (idx($statuses, $audit->getAuditStatus())) {
+        $commit_phids[] = $commit_phid;
+
+        // Allows to handle old commits without transactions.
+        $modification_dates[$commit_phid] =
+          $this->commits[$commit_phid]->getEpoch();
+      }
+    }
+
+    if (!$commit_phids) {
+      return array();
+    }
+
+    $xactions = id(new PhabricatorAuditTransactionQuery())
+      ->setViewer($this->getUser())
+      ->withObjectPHIDs($commit_phids)
+      ->withTransactionTypes(array(
+        PhabricatorAuditActionConstants::ADD_AUDITORS,
+        PhabricatorAuditActionConstants::ACTION,
+      ))
+      ->needComments(true)
+      ->execute();
+
+    // Constants of "PhabricatorAuditActionConstants" class can
+    // tell audit result of each transaction.
+    foreach ($xactions as $xaction) {
+      $modification_dates[$xaction->getObjectPHID()] =
+        $xaction->getDateModified();
+    }
+
+    return $modification_dates;
   }
 
 }
