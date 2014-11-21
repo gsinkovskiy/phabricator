@@ -246,6 +246,12 @@ final class DiffusionCommitController extends DiffusionController {
       $show_all_details = $request->getBool('show_all');
 
       $change_panel = new PHUIObjectBoxView();
+
+      $anchor = id(new PhabricatorAnchorView())
+        ->setAnchorName('changes')
+        ->setNavigationMarker(true);
+      $change_panel->appendChild($anchor);
+
       $header = new PHUIHeaderView();
       $header->setHeader('Changes ('.number_format($count).')');
       $change_panel->setID('toc');
@@ -271,6 +277,61 @@ final class DiffusionCommitController extends DiffusionController {
       }
 
       $change_panel->appendChild($change_table);
+
+      $whitespace = $request->getStr(
+        'whitespace',
+        DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+
+      $options = array(
+        DifferentialChangesetParser::WHITESPACE_IGNORE_FORCE => 'Ignore All',
+        DifferentialChangesetParser::WHITESPACE_IGNORE_ALL => 'Ignore Most',
+        DifferentialChangesetParser::WHITESPACE_IGNORE_TRAILING =>
+          'Ignore Trailing',
+        DifferentialChangesetParser::WHITESPACE_SHOW_ALL => 'Show All',
+      );
+
+      foreach ($options as $value => $label) {
+        $options[$value] = phutil_tag(
+          'option',
+          array(
+            'value' => $value,
+            'selected' => ($value == $whitespace)
+            ? 'selected'
+            : null,
+          ),
+          $label);
+      }
+      $select = phutil_tag('select', array('name' => 'whitespace'), $options);
+
+      $show_changes = phutil_tag(
+        'div',
+        array(
+          'class' => 'differential-update-history-footer',
+        ),
+        array(
+          phutil_tag(
+            'label',
+            array(),
+            array(
+              pht('Whitespace Changes:'),
+              $select,
+            )),
+          phutil_tag(
+            'button',
+            array(),
+            pht('Show Changes')),
+        ));
+
+      $show_changes_form = phabricator_form(
+        $user,
+        array(
+          'action' => '#changes',
+        ),
+        array(
+          $show_changes,
+        ));
+      $change_panel->appendChild($show_changes_form);
+
       $change_panel->setHeader($header);
 
       $content[] = $change_panel;
@@ -343,6 +404,7 @@ final class DiffusionCommitController extends DiffusionController {
       $change_list->setVisibleChangesets($visible_changesets);
       $change_list->setRenderingReferences($references);
       $change_list->setRenderURI('/diffusion/'.$callsign.'/diff/');
+      $change_list->setWhitespace($whitespace);
       $change_list->setRepository($repository);
       $change_list->setUser($user);
 
