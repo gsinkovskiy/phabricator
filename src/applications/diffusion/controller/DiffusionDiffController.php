@@ -22,6 +22,9 @@ final class DiffusionDiffController extends DiffusionController {
     $request = $this->getRequest();
     $user = $request->getUser();
 
+    $whitespace = $request->getStr('whitespace',
+      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+
     if (!$request->isAjax()) {
 
       // This request came out of the dropdown menu, either "View Standalone"
@@ -39,7 +42,10 @@ final class DiffusionDiffController extends DiffusionController {
       } else {
         $uri = $drequest->generateURI(
           array(
-            'action'  => 'change',
+            'action' => 'change',
+            'params' => array(
+              'whitespace' => $whitespace,
+            ),
           ));
       }
 
@@ -87,8 +93,7 @@ final class DiffusionDiffController extends DiffusionController {
     $parser->setLeftSideCommentMapping($path_id, false);
     $parser->setRightSideCommentMapping($path_id, true);
 
-    $parser->setWhitespaceMode(
-      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+    $parser->setWhitespaceMode($whitespace);
 
     $inlines = array_merge(PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
       $user,

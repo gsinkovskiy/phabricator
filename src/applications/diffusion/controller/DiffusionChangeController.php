@@ -39,6 +39,10 @@ final class DiffusionChangeController extends DiffusionController {
       0 => $changeset,
     );
 
+    $whitespace = $this->getRequest()->getStr(
+      'whitespace',
+      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+
     $changeset_view = new DifferentialChangesetListView();
     $changeset_view->setTitle(pht('Change'));
     $changeset_view->setChangesets($changesets);
@@ -61,8 +65,7 @@ final class DiffusionChangeController extends DiffusionController {
     $changeset_view->setRawFileURIs($left_uri, $right_uri);
 
     $changeset_view->setRenderURI('/diffusion/'.$callsign.'/diff/');
-    $changeset_view->setWhitespace(
-      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+    $changeset_view->setWhitespace($whitespace);
     $changeset_view->setUser($this->getRequest()->getUser());
 
     // TODO: This is pretty awkward, unify the CSS between Diffusion and
