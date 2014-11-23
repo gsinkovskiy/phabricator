@@ -133,6 +133,18 @@ EOTEXT
     return $status;
   }
 
+  public function getQuickCreateItems(PhabricatorUser $viewer) {
+    $items = array();
+
+    $item = id(new PHUIListItemView())
+      ->setName(pht('Differential Diff'))
+      ->setIcon('fa-cog')
+      ->setHref($this->getBaseURI().'diff/create/');
+    $items[] = $item;
+
+    return $items;
+  }
+
   protected function getCustomCapabilities() {
     return array(
       DifferentialDefaultViewCapability::CAPABILITY => array(
