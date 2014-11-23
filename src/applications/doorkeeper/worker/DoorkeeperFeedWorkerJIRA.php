@@ -75,9 +75,42 @@ final class DoorkeeperFeedWorkerJIRA extends DoorkeeperFeedWorker {
       $accounts = mpull($accounts, null, 'getUserPHID');
       $accounts = array_select_keys($accounts, $try_users);
 
+      $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
+
       foreach ($xobj_list as $xobj) {
         foreach ($accounts as $account) {
           try {
+            // create/update link from Jira issue to Phabricator object
+            $object_title = $publisher->getObjectTitle($object);
+            $object_icon_title = trim(substr($object_title, 0,
+              strpos($object_title, ' ')), '[]');
+
+            $post_data = array(
+              'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.
+                $object->getPHID(),
+              'application' => array(
+                'type' => 'com.phacility.phabricator',
+                'name' => 'Phabricator',
+              ),
+              'relationship' => 'implemented in',
+              'object' => array(
+                'url' => $publisher->getObjectURI($object),
+                'title' => $object_title,
+                'icon' => array(
+                  'url16x16' => $base_uri.'/favicon.ico',
+                  'title' => $object_icon_title,
+                )
+              )
+            );
+
+            $provider->newJIRAFuture(
+              $account,
+              'rest/api/2/issue/'.$xobj->getObjectID().'/remotelink',
+              'POST',
+              $post_data
+            )->resolveJSON();
+
+            // add issue comment
             $provider->newJIRAFuture(
               $account,
               'rest/api/2/issue/'.$xobj->getObjectID().'/comment',
