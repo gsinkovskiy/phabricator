@@ -99,7 +99,7 @@ final class PhabricatorRepositorySvnCommitChangeParserWorker
       // Otherwise we can just look at the previous revision.
       $lookup_here[$path] = array(
         'rawPath'   => $path,
-        'rawCommit' => $svn_commit - 1,
+        'rawCommit' => $repository->getSubversionParentCommit($svn_commit),
       );
     }
 
