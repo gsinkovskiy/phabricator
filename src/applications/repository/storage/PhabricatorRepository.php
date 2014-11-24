@@ -238,6 +238,32 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return $uri;
   }
 
+  public function getSubversionParentCommit($svn_revision) {
+    $svn_revision = (int)$svn_revision;
+
+    if ($svn_revision <= 1) {
+      return 0;
+    }
+
+    $parent_svn_revision = $svn_revision - 1;
+
+    // For fully imported repositories "$svn_revision - 1" assumption
+    // is always correct.
+    $subpath = $this->getDetail('svn-subpath');
+    if (!strlen($subpath)) {
+      return $parent_svn_revision;
+    }
+
+    list($xml) = $this->execxRemoteCommand(
+      'log %s --xml --revision %d:1 --limit 1',
+      $this->getSubversionBaseURI(),
+      $parent_svn_revision);
+
+    $log = new SimpleXMLElement($xml);
+
+    return (int)$log->logentry['revision'];
+  }
+
   public function attachProjectPHIDs(array $project_phids) {
     $this->projectPHIDs = $project_phids;
     return $this;
