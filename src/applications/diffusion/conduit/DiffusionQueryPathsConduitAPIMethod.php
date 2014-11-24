@@ -25,6 +25,12 @@ final class DiffusionQueryPathsConduitAPIMethod
     );
   }
 
+  protected function defineCustomErrorTypes() {
+    return array(
+      'ERR-UNKNOWN-FOLDER-LAYOUT' => 'Unknown SVN repository folder layout',
+    );
+  }
+
   protected function getResult(ConduitAPIRequest $request) {
     $results = parent::getResult($request);
     $offset = $request->getValue('offset');
@@ -47,6 +53,52 @@ final class DiffusionQueryPathsConduitAPIMethod
 
     $lines = id(new LinesOfALargeExecFuture($future))->setDelimiter("\0");
     return $this->filterResults($lines, $request);
+  }
+
+  protected function getSVNResult(ConduitAPIRequest $request) {
+    $drequest = $this->getDiffusionRequest();
+    $path = $drequest->getPath();
+
+    $path_change_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
+      $drequest);
+
+    $first_changed_path = null;
+    foreach ($path_change_query->loadChanges() as $change) {
+      $first_changed_path = preg_replace('#^'.$path.'#', '', $change->getPath());
+      break;
+    }
+
+    $sub_path = $this->determineSVNLayoutFolder($first_changed_path);
+
+    $raw_lines = queryfx_all(
+      id(new PhabricatorRepository())->establishConnection('r'),
+      'SELECT path FROM %T WHERE path LIKE %s',
+      PhabricatorRepository::TABLE_PATH,
+      '/'.$path.$sub_path.'/%');
+
+    $lines = array();
+    $sub_path_start = strlen('/'.$path);
+    foreach ($raw_lines as $raw_line) {
+      $lines[] = substr($raw_line['path'], $sub_path_start);
+    }
+
+    return $this->filterResults($lines, $request);
+  }
+
+  private function determineSVNLayoutFolder($path) {
+    $match_expressions = array(
+       '#^trunk(/|$)#',
+       '#^branches/([^/]+)#',
+       '#^(tags|releases)/([^/]+)#'
+     );
+
+    foreach ($match_expressions as $match_expression) {
+      if (preg_match($match_expression, $path, $regs)) {
+        return rtrim($regs[0], '/');
+      }
+    }
+
+    throw new ConduitException('ERR-UNKNOWN-FOLDER-LAYOUT');
   }
 
   protected function getMercurialResult(ConduitAPIRequest $request) {

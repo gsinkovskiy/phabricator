@@ -1350,7 +1350,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   }
 
   public function canUsePathTree() {
-    return !$this->isSVN();
+    return true;
   }
 
   public function canMirror() {
