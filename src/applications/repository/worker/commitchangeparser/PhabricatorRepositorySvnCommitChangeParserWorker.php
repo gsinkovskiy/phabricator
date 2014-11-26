@@ -49,6 +49,18 @@ final class PhabricatorRepositorySvnCommitChangeParserWorker
         'rawChangeType'   => (string)$path['action'],
         'rawTargetCommit' => (string)$path['copyfrom-rev'],
       );
+
+      // For copied items get revision from Diffusion repository sub-path,
+      // because SVN reports last revision per whole SVN repository, not
+      // sub-path, that is used in Diffusion.
+      if ($raw_paths[$name]['rawTargetCommit']) {
+        $better_revision = $repository->getSubversionParentCommit(
+          $raw_paths[$name]['rawTargetCommit'] + 1);
+
+        if ($better_revision) {
+          $raw_paths[$name]['rawTargetCommit'] = $better_revision;
+        }
+      }
     }
 
     $copied_or_moved_map = array();
