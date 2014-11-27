@@ -345,6 +345,7 @@ final class PhabricatorHomeMainController extends PhabricatorHomeController {
       ->withAuditAwaitingUser($user)
       ->needAuditRequests(true)
       ->needCommitData(true)
+      ->needDrafts(true)
       ->setLimit(10);
 
     $commits = $query->execute();
@@ -385,6 +386,7 @@ final class PhabricatorHomeMainController extends PhabricatorHomeController {
       ->withAuditStatus(DiffusionCommitQuery::AUDIT_STATUS_CONCERN)
       ->needCommitData(true)
       ->needAuditRequests(true)
+      ->needDrafts(true)
       ->setLimit(10);
 
     $commits = $query->execute();

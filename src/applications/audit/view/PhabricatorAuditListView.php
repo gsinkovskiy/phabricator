@@ -125,6 +125,14 @@ final class PhabricatorAuditListView extends AphrontView {
     $this->initBehavior('phabricator-tooltips', array());
     $this->requireResource('aphront-tooltip-css');
 
+    $draft_icon = id(new PHUIIconView())
+      ->setIconFont('fa-comment-o lightgreytext')
+      ->addSigil('has-tooltip')
+      ->setMetadata(
+        array(
+          'tip' => pht('Unsubmitted Comments'),
+        ));
+
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
       $commit_phid = $commit->getPHID();
@@ -155,7 +163,13 @@ final class PhabricatorAuditListView extends AphrontView {
         ->setObjectName($commit_name)
         ->setHeader($commit_desc)
         ->setHref($commit_link)
-        ->setBarColor($status_color)
+        ->setBarColor($status_color);
+
+      if ($commit->getDrafts($user)) {
+        $item->addAttribute($draft_icon);
+      }
+
+      $item
         ->addAttribute($status_text)
         ->addAttribute($reasons);
 

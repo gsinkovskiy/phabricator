@@ -34,7 +34,8 @@ final class PhabricatorCommitSearchEngine
   public function buildQueryFromSavedQuery(PhabricatorSavedQuery $saved) {
     $query = id(new DiffusionCommitQuery())
       ->needAuditRequests(true)
-      ->needCommitData(true);
+      ->needCommitData(true)
+      ->needDrafts(true);
 
     $auditor_phids = $saved->getParameter('auditorPHIDs', array());
     if ($auditor_phids) {

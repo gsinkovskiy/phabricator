@@ -25,6 +25,7 @@ final class DiffusionCommitQuery
   const AUDIT_STATUS_PARTIAL   = 'audit-status-partial';
 
   private $needCommitData;
+  private $needDrafts;
 
   public function withIDs(array $ids) {
     $this->ids = $ids;
@@ -92,6 +93,11 @@ final class DiffusionCommitQuery
 
   public function needCommitData($need) {
     $this->needCommitData = $need;
+    return $this;
+  }
+
+  public function needDrafts($need_drafts) {
+    $this->needDrafts = $need_drafts;
     return $this;
   }
 
@@ -237,6 +243,8 @@ final class DiffusionCommitQuery
   }
 
   protected function didFilterPage(array $commits) {
+    $viewer = $this->getViewer();
+
     if ($this->needCommitData) {
       $data = id(new PhabricatorRepositoryCommitData())->loadAllWhere(
         'commitID in (%Ld)',
@@ -266,6 +274,20 @@ final class DiffusionCommitQuery
         foreach ($audit_requests as $audit_request) {
           $audit_request->attachCommit($commit);
         }
+      }
+    }
+
+    if ($this->needDrafts) {
+      $drafts = id(new PhabricatorAuditTransactionComment())->loadAllWhere(
+        'authorPHID = %s AND commitPHID IN (%Ls) AND transactionPHID IS NULL
+          AND pathID IS NOT NULL',
+        $viewer->getPHID(),
+        mpull($commits, 'getPHID'));
+      $drafts = mgroup($drafts, 'getCommitPHID');
+      foreach ($commits as $commit) {
+        $commit->attachDrafts(
+          $viewer,
+          idx($drafts, $commit->getPHID(), array()));
       }
     }
 
