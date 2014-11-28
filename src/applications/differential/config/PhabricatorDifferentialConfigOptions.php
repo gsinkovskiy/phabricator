@@ -229,6 +229,19 @@ final class PhabricatorDifferentialConfigOptions
             "Similar to `differential.days-fresh` but marks stale revisions. ".
             "If the revision is even older than it is when marked as 'old'.")),
       $this->newOption(
+        'differential.drafts-icon',
+        'string',
+        'fa-comment-o')
+        ->setDescription(pht('Icon name from '.
+          '[[http://fortawesome.github.io/Font-Awesome/icons/ | Font Awesome]]'.
+          ' to show before revisions, that have draft comments.')),
+      $this->newOption(
+        'differential.drafts-icon-color',
+        'string',
+        'lightgreytext')
+        ->setDescription(pht('Icon color, that is shown before revisions, '.
+          'that have draft comments.')),
+      $this->newOption(
         'metamta.differential.reply-handler-domain',
         'string',
         null)

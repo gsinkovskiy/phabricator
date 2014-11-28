@@ -76,6 +76,10 @@ final class DifferentialRevisionListView extends AphrontView {
 
     $list = new PHUIObjectItemListView();
 
+    $draft_icon_font =
+      PhabricatorEnv::getEnvConfig('differential.drafts-icon').' '.
+      PhabricatorEnv::getEnvConfig('differential.drafts-icon-color');
+
     foreach ($this->revisions as $revision) {
       $item = id(new PHUIObjectItemView())
         ->setUser($user);
@@ -127,7 +131,7 @@ final class DifferentialRevisionListView extends AphrontView {
 
       if (isset($icons['draft'])) {
         $draft = id(new PHUIIconView())
-          ->setIconFont('fa-comment-o lightgreytext')
+          ->setIconFont($draft_icon_font)
           ->addSigil('has-tooltip')
           ->setMetadata(
             array(
