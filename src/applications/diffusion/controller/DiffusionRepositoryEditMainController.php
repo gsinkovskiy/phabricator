@@ -29,7 +29,8 @@ final class DiffusionRepositoryEditMainController
         break;
     }
 
-    $has_branches = ($is_git || $is_hg);
+    $has_branches = $repository->supportsBranches();
+
     $has_local = $repository->usesLocalWorkingCopy();
 
     $crumbs = $this->buildApplicationCrumbs($is_main = true);
@@ -477,6 +478,32 @@ final class DiffusionRepositoryEditMainController
       $repository->getHumanReadableDetail('svn-subpath'),
       phutil_tag('em', array(), pht('Import Entire Repository')));
     $view->addProperty(pht('Import Only'), $svn_subpath);
+
+    $layout_folders = array(
+      $repository->getSubversionTrunkFolder(),
+      $repository->getSubversionBranchesFolder(),
+      $repository->getSubversionTagsFolder());
+
+    switch ($repository->getSubversionLayout()) {
+      case PhabricatorRepository::LAYOUT_NONE:
+        $svn_layout = pht('None');
+        break;
+
+      case PhabricatorRepository::LAYOUT_STANDARD:
+        $svn_layout = 'Standard ('.implode(', ', $layout_folders).')';
+        break;
+
+      case PhabricatorRepository::LAYOUT_CUSTOM:
+        $svn_layout = 'Custom ('.implode(', ', $layout_folders).')';
+        break;
+
+      default:
+        throw new Exception('Unknown repository layout: '.
+          $repository->getSubversionLayout());
+    }
+
+    $svn_layout = phutil_tag('em', array(), $svn_layout);
+    $view->addProperty(pht('Layout'), $svn_layout);
 
     return $view;
   }

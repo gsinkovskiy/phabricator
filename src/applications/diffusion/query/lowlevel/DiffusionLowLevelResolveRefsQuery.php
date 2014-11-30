@@ -183,6 +183,17 @@ final class DiffusionLowLevelResolveRefsQuery
 
     $max_commit_id = (int)$max_commit->getCommitIdentifier();
 
+    if ($repository->supportsBranches()) {
+      $branches = id(new DiffusionLowLevelSVNRefQuery())
+        ->setRepository($repository)
+        ->execute();
+
+      $tags = id(new DiffusionLowLevelSVNRefQuery())
+        ->setRepository($repository)
+        ->withIsTag(true)
+        ->execute();
+    }
+
     $results = array();
     foreach ($this->refs as $ref) {
       if ($ref == 'HEAD') {
@@ -195,21 +206,33 @@ final class DiffusionLowLevelResolveRefsQuery
       }
 
       if (!preg_match('/^\d+$/', $ref)) {
-        // This ref is non-numeric, so it doesn't resolve to anything.
-        continue;
-      }
+        if (!$repository->supportsBranches()) {
+          // This ref is non-numeric, so it doesn't resolve to anything.
+          continue;
+        }
 
-      // Resolve other commits if we can deduce their existence.
+        if (idx($branches, $ref)) {
+          $results[$ref][] = array(
+            'type' => 'branch',
+            'identifier' => (int)$branches[$ref]->getCommitIdentifier());
+        } elseif (idx($tags, $ref)) {
+          $results[$ref][] = array(
+            'type' => 'tag',
+            'identifier' => (int)$tags[$ref]->getCommitIdentifier());
+        }
+      } else {
+        // Resolve other commits if we can deduce their existence.
 
-      // TODO: When we import only part of a repository, we won't necessarily
-      // have all of the smaller commits. Should we fail to resolve them here
-      // for repositories with a subpath? It might let us simplify other things
-      // elsewhere.
-      if ((int)$ref <= $max_commit_id) {
-        $results[$ref][] = array(
-          'type' => 'commit',
-          'identifier' => (int)$ref,
-        );
+        // TODO: When we import only part of a repository, we won't necessarily
+        // have all of the smaller commits. Should we fail to resolve them here
+        // for repositories with a subpath? It might let us simplify other things
+        // elsewhere.
+        if ((int)$ref <= $max_commit_id) {
+          $results[$ref][] = array(
+            'type' => 'commit',
+            'identifier' => (int)$ref,
+          );
+        }
       }
     }
 

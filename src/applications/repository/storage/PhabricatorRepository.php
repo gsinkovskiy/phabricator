@@ -41,6 +41,10 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   const BECAUSE_BRANCH_UNTRACKED = 'auto/notrack';
   const BECAUSE_BRANCH_NOT_AUTOCLOSE = 'auto/noclose';
 
+  const LAYOUT_NONE = 'none';
+  const LAYOUT_STANDARD = 'standard';
+  const LAYOUT_CUSTOM = 'custom';
+
   protected $name;
   protected $callsign;
   protected $uuid;
@@ -197,6 +201,44 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
 
   public function getLocalPath() {
     return $this->getDetail('local-path');
+  }
+
+  public function getSubversionLayout() {
+    return $this->getDetail('svn-layout') ?: self::LAYOUT_NONE;
+  }
+
+  public function setSubversionLayout($layout) {
+    if ($this->getSubversionLayout() != $layout) {
+      $this->writeStatusMessage(
+        PhabricatorRepositoryStatusMessage::TYPE_NEEDS_UPDATE,
+        PhabricatorRepositoryStatusMessage::CODE_OKAY);
+    }
+
+    return $this->setDetail('svn-layout', $layout);
+  }
+
+  public function getSubversionTrunkFolder() {
+    if ($this->getSubversionLayout() == self::LAYOUT_STANDARD) {
+      return 'trunk';
+    }
+
+    return $this->getDetail('svn-trunk-folder') ?: 'trunk';
+  }
+
+  public function getSubversionBranchesFolder() {
+    if ($this->getSubversionLayout() == self::LAYOUT_STANDARD) {
+      return 'branches';
+    }
+
+    return $this->getDetail('svn-branches-folder') ?: 'branches';
+  }
+
+  public function getSubversionTagsFolder() {
+    if ($this->getSubversionLayout() == self::LAYOUT_STANDARD) {
+      return 'tags';
+    }
+
+    return $this->getDetail('svn-tags-folder') ?: 'tags';
   }
 
   public function getSubversionBaseURI($commit = null) {
@@ -605,6 +647,16 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return $this->getDetail('tracking-enabled', false);
   }
 
+  public function supportsBranches() {
+    $vcs = $this->getVersionControlSystem();
+
+    if ($vcs == PhabricatorRepositoryType::REPOSITORY_TYPE_SVN) {
+      return $this->getSubversionLayout() != PhabricatorRepository::LAYOUT_NONE;
+    }
+
+    return true;
+  }
+
   public function getDefaultBranch() {
     $default = $this->getDetail('default-branch');
     if (strlen($default)) {
@@ -614,6 +666,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     $default_branches = array(
       PhabricatorRepositoryType::REPOSITORY_TYPE_GIT        => 'master',
       PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL  => 'default',
+      PhabricatorRepositoryType::REPOSITORY_TYPE_SVN        => 'trunk',
     );
 
     return idx($default_branches, $this->getVersionControlSystem());
@@ -624,12 +677,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   }
 
   private function isBranchInFilter($branch, $filter_key) {
-    $vcs = $this->getVersionControlSystem();
-
-    $is_git = ($vcs == PhabricatorRepositoryType::REPOSITORY_TYPE_GIT);
-
-    $use_filter = ($is_git);
-    if (!$use_filter) {
+    if (!$this->supportsBranches()) {
       // If this VCS doesn't use filters, pass everything through.
       return true;
     }

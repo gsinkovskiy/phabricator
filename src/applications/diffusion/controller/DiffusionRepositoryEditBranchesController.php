@@ -24,6 +24,7 @@ final class DiffusionRepositoryEditBranchesController
 
     $is_git = false;
     $is_hg = false;
+    $is_svn = false;
 
     switch ($repository->getVersionControlSystem()) {
       case PhabricatorRepositoryType::REPOSITORY_TYPE_GIT:
@@ -33,8 +34,12 @@ final class DiffusionRepositoryEditBranchesController
         $is_hg = true;
         break;
       case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
-        throw new Exception(
-          pht('Subversion does not support branches!'));
+        $is_svn = true;
+        if (!$repository->supportsBranches()) {
+          throw new Exception(pht('This repository doesn\'t support '.
+            'branches!'));
+        }
+        break;
       default:
         throw new Exception(
           pht('Repository has unknown version control system!'));
