@@ -412,4 +412,11 @@ final class PhabricatorRepositoryCommit
     return new PhabricatorAuditTransaction();
   }
 
+  public function willRenderTimeline(
+    PhabricatorApplicationTransactionView $timeline,
+    AphrontRequest $request) {
+
+    return $timeline;
+  }
+
 }

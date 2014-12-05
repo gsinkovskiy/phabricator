@@ -101,7 +101,6 @@ final class DiffusionChangeController extends DiffusionController {
       ),
       array(
         'title' => pht('Change'),
-        'device' => false,
       ));
   }
 
