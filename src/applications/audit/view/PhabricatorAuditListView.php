@@ -126,7 +126,7 @@ final class PhabricatorAuditListView extends AphrontView {
     $this->requireResource('aphront-tooltip-css');
 
     $draft_icon = id(new PHUIIconView())
-      ->setIconFont('fa-comment-o lightgreytext')
+      ->setIconFont('fa-comment yellow')
       ->addSigil('has-tooltip')
       ->setMetadata(
         array(
