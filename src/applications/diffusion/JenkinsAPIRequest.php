@@ -1,7 +1,6 @@
 <?php
 
-final class JenkinsAPIRequest
-{
+final class JenkinsAPIRequest {
 
   private $jobName;
   private $buildNumber;
@@ -77,7 +76,8 @@ final class JenkinsAPIRequest
       }
 
       if ($response->hasErrors()) {
-        throw new Exception('Jenkins request failed with '.$response->code.' HTTP code');
+        throw new Exception(
+          'Jenkins request failed with '.$response->code.' HTTP code');
       }
 
       if ($this->expects == 'json') {
@@ -101,14 +101,15 @@ final class JenkinsAPIRequest
 
     if ($this->buildNumber) {
       if (!$this->jobName) {
-        throw new Exception('Job name is required, when specifying the build number');
+        throw new Exception(
+          'Job name is required, when specifying the build number');
       }
 
-      $url .= '/' . $this->buildNumber;
+      $url .= '/'.$this->buildNumber;
     }
 
     if ($this->suffix) {
-      $url .= '/' . $this->suffix;
+      $url .= '/'.$this->suffix;
     }
 
     if ($this->expects) {

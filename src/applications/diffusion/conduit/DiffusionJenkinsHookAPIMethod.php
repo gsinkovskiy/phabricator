@@ -85,7 +85,8 @@ final class DiffusionJenkinsHookAPIMethod
       ->setSuffix('submitDescription')
       ->setExpects('')
       ->setParams(array(
-      	'description' => '<a href="'.$commit_url.'" target="_blank">'.$commit_url.'</a>',
+        'description' =>
+          '<a href="'.$commit_url.'" target="_blank">'.$commit_url.'</a>',
       ))
       ->query();
 
@@ -93,8 +94,10 @@ final class DiffusionJenkinsHookAPIMethod
     $checkstyle_warnings =
       id(new JenkinsWarnings($job_name, $build_number, 'checkstyleResult'))
       ->get($commit_paths);
-    $this->setCommitProperty($commit, 'checkstyle:warnings', $checkstyle_warnings);
-    $checkstyle_warning_count = $this->computeWarningCount($checkstyle_warnings);
+    $this->setCommitProperty(
+      $commit, 'checkstyle:warnings', $checkstyle_warnings);
+    $checkstyle_warning_count =
+      $this->computeWarningCount($checkstyle_warnings);
 
     // 2. record pmd warnings
     $pmd_warnings =
@@ -104,9 +107,8 @@ final class DiffusionJenkinsHookAPIMethod
     $pmd_warning_count = $this->computeWarningCount($pmd_warnings);
 
     // 3. record build information
-    $message = <<<MESSAGE
-    Build **#{$job_info->number}** finished with **{$job_info->result}** status: {$job_info->url}
-MESSAGE;
+    $message = "Build **#{$job_info->number}** finished ".
+      "with **{$job_info->result}** status: {$job_info->url}\n";
 
     if ($checkstyle_warning_count || $pmd_warning_count) {
       $message .= "\n";
@@ -160,7 +162,8 @@ MESSAGE;
     return mpull($path_changes, 'getPath');
   }
 
-  private function setCommitProperty(PhabricatorRepositoryCommit $commit, $name, $value) {
+  private function setCommitProperty(
+    PhabricatorRepositoryCommit $commit, $name, $value) {
     $property = $this->getCommitProperty($commit, $name);
 
     if (!$value) {
@@ -183,7 +186,8 @@ MESSAGE;
     return $property;
   }
 
-  private function getCommitProperty(PhabricatorRepositoryCommit $commit, $name) {
+  private function getCommitProperty(
+    PhabricatorRepositoryCommit $commit, $name) {
     $property = id(new PhabricatorRepositoryCommitProperty())->loadOneWhere(
       'commitID = %d AND name = %s',
       $commit->getID(),
