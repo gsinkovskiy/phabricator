@@ -59,22 +59,11 @@ final class DiffusionQueryPathsConduitAPIMethod
     $drequest = $this->getDiffusionRequest();
     $path = $drequest->getPath();
 
-    $path_change_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
-      $drequest);
-
-    $first_changed_path = null;
-    foreach ($path_change_query->loadChanges() as $change) {
-      $first_changed_path = preg_replace('#^'.$path.'#', '', $change->getPath());
-      break;
-    }
-
-    $sub_path = $this->determineSVNLayoutFolder($first_changed_path);
-
     $raw_lines = queryfx_all(
       id(new PhabricatorRepository())->establishConnection('r'),
       'SELECT path FROM %T WHERE path LIKE %s',
       PhabricatorRepository::TABLE_PATH,
-      '/'.$path.$sub_path.'/%');
+      '/'.$path.$this->getSVNRefName($request).'/%');
 
     $lines = array();
     $sub_path_start = strlen('/'.$path);
@@ -85,15 +74,59 @@ final class DiffusionQueryPathsConduitAPIMethod
     return $this->filterResults($lines, $request);
   }
 
-  private function determineSVNLayoutFolder($path) {
-    $match_expressions = array(
-       '#^trunk(/|$)#',
-       '#^branches/([^/]+)#',
-       '#^(tags|releases)/([^/]+)#'
-     );
+  private function getSVNRefName(ConduitAPIRequest $request) {
+    $drequest = $this->getDiffusionRequest();
 
+    $branches = DiffusionQuery::callConduitWithDiffusionRequest(
+      $request->getUser(),
+      $drequest,
+      'diffusion.branchquery',
+      array(
+        'contains' => $drequest->getCommit(),
+      ));
+
+    if ($branches) {
+      return idx(head($branches), 'shortName');
+    }
+
+    $tags = DiffusionQuery::callConduitWithDiffusionRequest(
+      $request->getUser(),
+      $drequest,
+      'diffusion.tagsquery',
+      array(
+        'commit' => $drequest->getCommit(),
+      ));
+
+    if ($tags) {
+      return idx(head($tags), 'name');
+    }
+
+    return $this->guessSVNRefName();
+  }
+
+  private function guessSVNRefName() {
+    $drequest = $this->getDiffusionRequest();
+    $path = $drequest->getPath();
+
+    $path_change_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
+      $drequest);
+
+    $first_changed_path = null;
+    foreach ($path_change_query->loadChanges() as $change) {
+      $first_changed_path = preg_replace(
+        '#^'.$path.'#', '', $change->getPath());
+      break;
+    }
+
+    $match_expressions = array(
+      '#^trunk(/|$)#',
+      '#^branches/([^/]+)#',
+      '#^(tags|releases)/([^/]+)#',
+    );
+
+    $regs = null;
     foreach ($match_expressions as $match_expression) {
-      if (preg_match($match_expression, $path, $regs)) {
+      if (preg_match($match_expression, $first_changed_path, $regs)) {
         return rtrim($regs[0], '/');
       }
     }
