@@ -214,11 +214,11 @@ final class DiffusionLowLevelResolveRefsQuery
         if (idx($branches, $ref)) {
           $results[$ref][] = array(
             'type' => 'branch',
-            'identifier' => (int)$branches[$ref]->getCommitIdentifier());
-        } elseif (idx($tags, $ref)) {
+            'identifier' => (int)$branches[$ref]->getCommitIdentifier(),);
+        } else if (idx($tags, $ref)) {
           $results[$ref][] = array(
             'type' => 'tag',
-            'identifier' => (int)$tags[$ref]->getCommitIdentifier());
+            'identifier' => (int)$tags[$ref]->getCommitIdentifier(),);
         }
       } else {
         // Resolve other commits if we can deduce their existence.

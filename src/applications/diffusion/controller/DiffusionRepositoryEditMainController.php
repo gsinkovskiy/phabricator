@@ -482,7 +482,7 @@ final class DiffusionRepositoryEditMainController
     $layout_folders = array(
       $repository->getSubversionTrunkFolder(),
       $repository->getSubversionBranchesFolder(),
-      $repository->getSubversionTagsFolder());
+      $repository->getSubversionTagsFolder(),);
 
     switch ($repository->getSubversionLayout()) {
       case PhabricatorRepository::LAYOUT_NONE:

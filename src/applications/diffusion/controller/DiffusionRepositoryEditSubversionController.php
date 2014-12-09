@@ -40,7 +40,8 @@ final class DiffusionRepositoryEditSubversionController
     $v_subpath = $repository->getHumanReadableDetail('svn-subpath');
     $v_layout = $repository->getSubversionLayout();
     $v_trunk_folder = $repository->getHumanReadableDetail('svn-trunk-folder');
-    $v_branches_folder = $repository->getHumanReadableDetail('svn-branches-folder');
+    $v_branches_folder =
+      $repository->getHumanReadableDetail('svn-branches-folder');
     $v_tags_folder = $repository->getHumanReadableDetail('svn-tags-folder');
     $v_uuid = $repository->getUUID();
 
@@ -57,9 +58,12 @@ final class DiffusionRepositoryEditSubversionController
 
       $type_subpath = PhabricatorRepositoryTransaction::TYPE_SVN_SUBPATH;
       $type_layout = PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT;
-      $type_trunk_folder = PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER;
-      $type_branches_folder = PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER;
-      $type_tags_folder = PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER;
+      $type_trunk_folder =
+        PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER;
+      $type_branches_folder =
+        PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER;
+      $type_tags_folder =
+        PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER;
       $type_uuid = PhabricatorRepositoryTransaction::TYPE_UUID;
 
       $xactions[] = id(clone $template)
@@ -145,7 +149,7 @@ final class DiffusionRepositoryEditSubversionController
             array(
               PhabricatorRepository::LAYOUT_NONE => pht('None'),
               PhabricatorRepository::LAYOUT_STANDARD => pht('Standard'),
-              PhabricatorRepository::LAYOUT_CUSTOM => pht('Custom'))))
+              PhabricatorRepository::LAYOUT_CUSTOM => pht('Custom'),)))
       ->appendChild(
         id(new AphrontFormTextControl())
           ->setName('trunk_folder')
