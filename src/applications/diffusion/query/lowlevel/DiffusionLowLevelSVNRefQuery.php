@@ -24,6 +24,7 @@ final class DiffusionLowLevelSVNRefQuery
     $top_paths = array();
 
     foreach ($this->getPaths() as $path) {
+      $regs = null;
       if (preg_match('@^(.*)/\*$@', $path, $regs)) {
         $paths = array_merge_recursive($paths, $this->querySubPaths($regs[1]));
       } else {
@@ -49,7 +50,7 @@ final class DiffusionLowLevelSVNRefQuery
           ->setCommitIdentifier($path_info['revision'])
           ->setRawFields(array(
             'author' => $path_info['author'],
-            'epoch' => $path_info['epoch']));
+            'epoch' => $path_info['epoch'],));
 
         $refs[$path] = $ref;
       }
@@ -65,8 +66,9 @@ final class DiffusionLowLevelSVNRefQuery
       return array($repository->getSubversionTagsFolder().'/*');
     }
 
-    return array($repository->getSubversionTrunkFolder(),
-      $repository->getSubversionBranchesFolder().'/*');
+    return array(
+      $repository->getSubversionTrunkFolder(),
+      $repository->getSubversionBranchesFolder().'/*',);
   }
 
   private function querySubPaths($path) {

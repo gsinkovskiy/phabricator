@@ -205,7 +205,9 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   }
 
   public function getSubversionLayout() {
-    return $this->getDetail('svn-layout') ?: self::LAYOUT_NONE;
+    return $this->getDetail('svn-layout')
+      ? $this->getDetail('svn-layout')
+      : self::LAYOUT_NONE;
   }
 
   public function setSubversionLayout($layout) {
@@ -223,7 +225,9 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       return 'trunk';
     }
 
-    return $this->getDetail('svn-trunk-folder') ?: 'trunk';
+    return $this->getDetail('svn-trunk-folder')
+      ? $this->getDetail('svn-trunk-folder')
+      : 'trunk';
   }
 
   public function getSubversionBranchesFolder() {
@@ -231,7 +235,9 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       return 'branches';
     }
 
-    return $this->getDetail('svn-branches-folder') ?: 'branches';
+    return $this->getDetail('svn-branches-folder')
+      ? $this->getDetail('svn-branches-folder')
+      : 'branches';
   }
 
   public function getSubversionTagsFolder() {
@@ -239,7 +245,9 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       return 'tags';
     }
 
-    return $this->getDetail('svn-tags-folder') ?: 'tags';
+    return $this->getDetail('svn-tags-folder')
+      ? $this->getDetail('svn-tags-folder')
+      : 'tags';
   }
 
   public function getSubversionBaseURI($commit = null) {

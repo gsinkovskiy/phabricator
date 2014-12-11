@@ -99,16 +99,15 @@ final class DoorkeeperFeedWorkerJIRA extends DoorkeeperFeedWorker {
                 'icon' => array(
                   'url16x16' => $base_uri.'/favicon.ico',
                   'title' => $object_icon_title,
-                )
-              )
+                ),
+              ),
             );
 
             $provider->newJIRAFuture(
               $account,
               'rest/api/2/issue/'.$xobj->getObjectID().'/remotelink',
               'POST',
-              $post_data
-            )->resolveJSON();
+              $post_data)->resolveJSON();
 
             // add issue comment
             $provider->newJIRAFuture(

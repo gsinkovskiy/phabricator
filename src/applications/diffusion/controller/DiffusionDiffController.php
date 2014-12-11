@@ -95,7 +95,8 @@ final class DiffusionDiffController extends DiffusionController {
 
     $parser->setWhitespaceMode($whitespace);
 
-    $inlines = array_merge(PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
+    $inlines =
+      array_merge(PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
       $user,
       $drequest->loadCommit()->getPHID(),
       $path_id),
@@ -184,7 +185,7 @@ final class DiffusionDiffController extends DiffusionController {
     PhabricatorRepositoryCommitProperty $property) {
     if ($property->getName() == 'checkstyle:warnings') {
       return 'Lint: Checkstyle Warning';
-    } elseif ($property->getName() == 'pmd:warnings') {
+    } else if ($property->getName() == 'pmd:warnings') {
       return 'Lint: PMD Warning';
     }
 
