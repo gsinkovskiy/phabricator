@@ -56,6 +56,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   protected $versionControlSystem;
   protected $details = array();
   protected $credentialPHID;
+  protected $almanacServicePHID;
 
   private $commitCount = self::ATTACHABLE;
   private $mostRecentCommit = self::ATTACHABLE;
@@ -90,6 +91,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
         'uuid' => 'text64?',
         'pushPolicy' => 'policy',
         'credentialPHID' => 'phid?',
+        'almanacServicePHID' => 'phid?',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'key_phid' => null,
