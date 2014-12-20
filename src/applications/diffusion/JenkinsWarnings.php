@@ -57,7 +57,14 @@ final class JenkinsWarnings {
   }
 
   private function filter(array $warnings, array $allowed_files) {
+    $filtered_warnings = $this->filterByFilenames($warnings, $allowed_files);
+
+    return $this->filterByChangedLines($filtered_warnings, $allowed_files);
+  }
+
+  private function filterByFilenames(array $warnings, array $allowed_files) {
     $filtered_warnings = array();
+    $allowed_files = array_keys($allowed_files);
 
     // Make sure, that filename in warnings array exactly matches
     // one, that is used in commit.
@@ -71,6 +78,36 @@ final class JenkinsWarnings {
     }
 
     return $filtered_warnings;
+  }
+
+  private function filterByChangedLines(array $warnings, array $allowed_files) {
+    $filtered_warnings = array();
+
+    foreach ($warnings as $file => $file_warnings) {
+      $allowed_file_warnings = array();
+      $changed_lines = $this->increaseFuzzFactor($allowed_files[$file]);
+
+      foreach ($file_warnings as $file_warning) {
+        if (idx($changed_lines, $file_warning['line'])) {
+          $allowed_file_warnings[] = $file_warning;
+        }
+      }
+
+      $filtered_warnings[$file] = $allowed_file_warnings;
+    }
+
+    return array_filter($filtered_warnings);
+  }
+
+  private function increaseFuzzFactor(array $changed_lines) {
+    $new_changed_lines = $changed_lines;
+
+    foreach (array_keys($changed_lines) as $changed_line) {
+      $new_changed_lines[$changed_line - 1] = true;
+      $new_changed_lines[$changed_line + 1] = true;
+    }
+
+    return $new_changed_lines;
   }
 
 }

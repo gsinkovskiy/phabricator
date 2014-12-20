@@ -155,11 +155,33 @@ final class DiffusionJenkinsHookAPIMethod
   }
 
   private function getCommitFiles(DiffusionRequest $drequest) {
-    $change_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
-      $drequest);
-    $path_changes = $change_query->loadChanges();
+    $raw_diff = DiffusionQuery::callConduitWithDiffusionRequest(
+      $drequest->getUser(),
+      $drequest,
+      'diffusion.rawdiffquery',
+      array(
+        'path' => $drequest->getRepository()->isSVN() ? '/' : '.',
+        'commit' => $drequest->getCommit(),
+      ));
 
-    return mpull($path_changes, 'getPath');
+    /** @var ArcanistDiffChange[] $changes */
+    $parser = new ArcanistDiffParser();
+    $changes = $parser->parseDiff($raw_diff);
+
+    $ret = array();
+    foreach ($changes as $change) {
+      if ($change->getFileType() !== ArcanistDiffChangeType::FILE_TEXT) {
+        continue;
+      }
+
+      $lines = $change->getChangedLines('new');
+
+      if ($lines) {
+        $ret[$change->getCurrentPath()] = $lines;
+      }
+    }
+
+    return $ret;
   }
 
   private function setCommitProperty(
