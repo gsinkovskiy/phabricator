@@ -44,6 +44,7 @@ final class PhabricatorRepositoryEditor
     $types[] = PhabricatorRepositoryTransaction::TYPE_CREDENTIAL;
     $types[] = PhabricatorRepositoryTransaction::TYPE_DANGEROUS;
     $types[] = PhabricatorRepositoryTransaction::TYPE_CLONE_NAME;
+    $types[] = PhabricatorRepositoryTransaction::TYPE_SERVICE;
 
     $types[] = PhabricatorTransactions::TYPE_EDGE;
     $types[] = PhabricatorTransactions::TYPE_VIEW_POLICY;
@@ -107,6 +108,8 @@ final class PhabricatorRepositoryEditor
         return $object->shouldAllowDangerousChanges();
       case PhabricatorRepositoryTransaction::TYPE_CLONE_NAME:
         return $object->getDetail('clone-name');
+      case PhabricatorRepositoryTransaction::TYPE_SERVICE:
+        return $object->getAlmanacServicePHID();
     }
   }
 
@@ -143,6 +146,7 @@ final class PhabricatorRepositoryEditor
       case PhabricatorRepositoryTransaction::TYPE_CREDENTIAL:
       case PhabricatorRepositoryTransaction::TYPE_DANGEROUS:
       case PhabricatorRepositoryTransaction::TYPE_CLONE_NAME:
+      case PhabricatorRepositoryTransaction::TYPE_SERVICE:
         return $xaction->getNewValue();
       case PhabricatorRepositoryTransaction::TYPE_NOTIFY:
       case PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE:
@@ -225,6 +229,9 @@ final class PhabricatorRepositoryEditor
         return;
       case PhabricatorRepositoryTransaction::TYPE_CLONE_NAME:
         $object->setDetail('clone-name', $xaction->getNewValue());
+        return;
+      case PhabricatorRepositoryTransaction::TYPE_SERVICE:
+        $object->setAlmanacServicePHID($xaction->getNewValue());
         return;
       case PhabricatorRepositoryTransaction::TYPE_ENCODING:
         // Make sure the encoding is valid by converting to UTF-8. This tests
@@ -338,6 +345,7 @@ final class PhabricatorRepositoryEditor
       case PhabricatorRepositoryTransaction::TYPE_CREDENTIAL:
       case PhabricatorRepositoryTransaction::TYPE_DANGEROUS:
       case PhabricatorRepositoryTransaction::TYPE_CLONE_NAME:
+      case PhabricatorRepositoryTransaction::TYPE_SERVICE:
         PhabricatorPolicyFilter::requireCapability(
           $this->requireActor(),
           $object,
