@@ -189,7 +189,7 @@ final class PhabricatorAuditListView extends AphrontView {
         $item->setEpoch($commit->getEpoch());
       }
 
-      $item->addByline(pht('Author: %s', $author_name));
+      $item->addByline($author_name);
 
       $auditors = idx($this->commitAuditorsHTML, $commit_phid, array());
       if (!empty($auditors)) {
