@@ -18,6 +18,7 @@ final class PhabricatorProjectEditMainController
   public function processRequest() {
     $request = $this->getRequest();
     $viewer = $request->getUser();
+    $id = $request->getURIData('id');
 
     $project = id(new PhabricatorProjectQuery())
       ->setViewer($viewer)
@@ -37,18 +38,11 @@ final class PhabricatorProjectEditMainController
     if ($project->getStatus() == PhabricatorProjectStatus::STATUS_ACTIVE) {
       $header->setStatus('fa-check', 'bluegrey', pht('Active'));
     } else {
-      $header->setStatus('fa-ban', 'dark', pht('Archived'));
+      $header->setStatus('fa-ban', 'red', pht('Archived'));
     }
 
     $actions = $this->buildActionListView($project);
     $properties = $this->buildPropertyListView($project, $actions);
-
-    $crumbs = $this->buildApplicationCrumbs();
-    $crumbs->addTextCrumb(
-      $project->getName(),
-      $this->getApplicationURI('view/'.$project->getID().'/'));
-    $crumbs->addTextCrumb(pht('Edit'));
-    $crumbs->setActionList($actions);
 
     $object_box = id(new PHUIObjectBoxView())
       ->setHeader($header)
@@ -59,11 +53,16 @@ final class PhabricatorProjectEditMainController
       new PhabricatorProjectTransactionQuery());
     $timeline->setShouldTerminate(true);
 
+    $nav = $this->buildIconNavView($project);
+    $nav->selectFilter("edit/{$id}/");
+    $nav->appendChild($object_box);
+    $nav->appendChild($timeline);
+
+    $mnav = $this->buildSideNavView();
+
     return $this->buildApplicationPage(
       array(
-        $crumbs,
-        $object_box,
-        $timeline,
+        $nav,
       ),
       array(
         'title' => $project->getName(),
@@ -104,7 +103,7 @@ final class PhabricatorProjectEditMainController
     if ($project->isArchived()) {
       $view->addAction(
         id(new PhabricatorActionView())
-          ->setName(pht('Unarchive Project'))
+          ->setName(pht('Activate Project'))
           ->setIcon('fa-check')
           ->setHref($this->getApplicationURI("archive/{$id}/"))
           ->setDisabled(!$can_edit)
