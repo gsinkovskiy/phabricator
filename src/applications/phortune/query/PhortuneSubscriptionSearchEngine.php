@@ -28,6 +28,10 @@ final class PhortuneSubscriptionSearchEngine
     return pht('Phortune Subscriptions');
   }
 
+  public function getApplicationClassName() {
+    return 'PhabricatorPhortuneApplication';
+  }
+
   public function buildSavedQueryFromRequest(AphrontRequest $request) {
     $saved = new PhabricatorSavedQuery();
 
@@ -138,11 +142,13 @@ final class PhortuneSubscriptionSearchEngine
 
     $table = id(new PhortuneSubscriptionTableView())
       ->setUser($viewer)
+      ->setHandles($handles)
       ->setSubscriptions($subscriptions);
 
     $merchant = $this->getMerchant();
     if ($merchant) {
       $header = pht('Subscriptions for %s', $merchant->getName());
+      $table->setIsMerchantView(true);
     } else {
       $header = pht('Your Subscriptions');
     }

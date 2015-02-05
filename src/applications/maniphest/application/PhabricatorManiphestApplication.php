@@ -14,10 +14,6 @@ final class PhabricatorManiphestApplication extends PhabricatorApplication {
     return '/maniphest/';
   }
 
-  public function getIconName() {
-    return 'maniphest';
-  }
-
   public function getFontIcon() {
     return 'fa-anchor';
   }
@@ -43,7 +39,6 @@ final class PhabricatorManiphestApplication extends PhabricatorApplication {
   public function getEventListeners() {
     return array(
       new ManiphestNameIndexEventListener(),
-      new ManiphestActionMenuEventListener(),
       new ManiphestHovercardEventListener(),
     );
   }
