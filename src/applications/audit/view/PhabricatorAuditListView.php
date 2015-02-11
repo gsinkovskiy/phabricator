@@ -133,6 +133,10 @@ final class PhabricatorAuditListView extends AphrontView {
           'tip' => pht('Unsubmitted Comments'),
         ));
 
+    $fix_icon = id(new PHUIIconView())
+      ->setIconFont('fa-wrench green')
+      ->addSigil('has-tooltip');
+
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
       $commit_phid = $commit->getPHID();
@@ -141,6 +145,13 @@ final class PhabricatorAuditListView extends AphrontView {
       $commit_name = $commit_handle->getName();
       $commit_link = $commit_handle->getURI();
       $commit_desc = $this->getCommitDescription($commit_phid);
+
+      $fix_desc = '';
+      $regs = array();
+      if (preg_match('/^\[(fixes: [^\]]*)\](.*)$/s', $commit_desc, $regs)) {
+        $fix_desc = ucfirst($regs[1]);
+        $commit_desc = ltrim($regs[2]);
+      }
 
       $audit = idx($this->commitAudits, $commit_phid);
       if ($audit) {
@@ -153,6 +164,7 @@ final class PhabricatorAuditListView extends AphrontView {
           PhabricatorAuditStatusConstants::getStatusColor($status_code);
       } else {
         $reasons = null;
+        $status_code = null;
         $status_text = null;
         $status_color = null;
       }
@@ -164,6 +176,16 @@ final class PhabricatorAuditListView extends AphrontView {
         ->setHeader($commit_desc)
         ->setHref($commit_link)
         ->setBarColor($status_color);
+
+      if ($fix_desc) {
+        $actual_fix_icon = clone $fix_icon;
+        $actual_fix_icon->setMetadata(
+          array(
+            'tip' => $fix_desc,
+          ));
+
+        $item->addAttribute($actual_fix_icon);
+      }
 
       if ($commit->getDrafts($user)) {
         $item->addAttribute($draft_icon);
