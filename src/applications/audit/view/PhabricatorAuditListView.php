@@ -12,6 +12,8 @@ final class PhabricatorAuditListView extends AphrontView {
   private $commitAudits = array();
   private $commitAuditorsHTML = array();
 
+  private $inverseMentions = array();
+
   public function setHandles(array $handles) {
     assert_instances_of($handles, 'PhabricatorObjectHandle');
     $this->handles = $handles;
@@ -56,7 +58,52 @@ final class PhabricatorAuditListView extends AphrontView {
         $phids[$audit->getAuditorPHID()] = true;
       }
     }
+
+    $this->prepareInverseMentions();
+
+    foreach ($this->inverseMentions as $commit_phid => $inverse_mentions) {
+      foreach ($inverse_mentions as $object_phid) {
+        $phids[$object_phid] = true;
+      }
+    }
+
     return array_keys($phids);
+  }
+
+  private function prepareInverseMentions() {
+    $commits = $this->getCommits();
+    $xactions = id(new PhabricatorAuditTransactionQuery())
+      ->setViewer($this->getUser())
+      ->withObjectPHIDs(array_keys($commits))
+      ->withTransactionTypes(array(
+        PhabricatorTransactions::TYPE_EDGE,
+      ))
+      ->execute();
+
+    foreach ($xactions as $xaction) {
+      if (head($xaction->getMetadata('edge:type')) !==
+        PhabricatorObjectMentionedByObjectEdgeType::EDGECONST
+      ) {
+        continue;
+      }
+
+      $commit_phid = $xaction->getObjectPHID();
+      if (!idx($this->inverseMentions, $commit_phid)) {
+        $this->inverseMentions[$commit_phid] = array();
+      }
+
+      foreach ($xaction->getNewValue() as $edge_data) {
+        $mentioned_by_phid = $edge_data['dst'];
+
+        if (phid_get_type($mentioned_by_phid) ===
+          PhabricatorRepositoryCommitPHIDType::TYPECONST
+        ) {
+          $this->inverseMentions[$commit_phid][$mentioned_by_phid] = true;
+        };
+      }
+    }
+
+    $this->inverseMentions = array_map('array_keys', $this->inverseMentions);
   }
 
   private function getHandle($phid) {
@@ -137,6 +184,10 @@ final class PhabricatorAuditListView extends AphrontView {
       ->setIconFont('fa-wrench green')
       ->addSigil('has-tooltip');
 
+    $fixed_by_icon = id(new PHUIIconView())
+      ->setIconFont('fa-medkit green')
+      ->addSigil('has-tooltip');
+
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
       $commit_phid = $commit->getPHID();
@@ -185,6 +236,33 @@ final class PhabricatorAuditListView extends AphrontView {
           ));
 
         $item->addAttribute($actual_fix_icon);
+      }
+
+      $inverse_mentions = idx($this->inverseMentions, $commit_phid);
+      if ($inverse_mentions) {
+        $fixed_in = array();
+        $is_fix_regexp =
+          '/\[fixes: '.preg_quote($commit_handle->getName(), '/').'\]/';
+
+        foreach ($inverse_mentions as $inverse_mention_phid) {
+          $inverse_mention = $this->getHandle($inverse_mention_phid);
+          $is_fix = preg_match($is_fix_regexp,
+            $inverse_mention->getFullName());
+
+          if ($is_fix) {
+            $fixed_in[] = $inverse_mention->getName();
+          }
+        }
+
+        if ($fixed_in) {
+          $actual_fixed_by_icon = clone $fixed_by_icon;
+          $actual_fixed_by_icon->setMetadata(
+            array(
+              'tip' => 'Fixed in: '.implode(', ', $fixed_in),
+            ));
+
+          $item->addAttribute($actual_fixed_by_icon);
+        }
       }
 
       if ($commit->getDrafts($user)) {
@@ -293,7 +371,6 @@ final class PhabricatorAuditListView extends AphrontView {
         PhabricatorAuditActionConstants::ADD_AUDITORS,
         PhabricatorAuditActionConstants::ACTION,
       ))
-      ->needComments(true)
       ->execute();
 
     // Constants of "PhabricatorAuditActionConstants" class can
