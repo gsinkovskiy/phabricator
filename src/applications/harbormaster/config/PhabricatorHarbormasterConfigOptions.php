@@ -26,7 +26,7 @@ final class PhabricatorHarbormasterConfigOptions
       $this->newOption('jenkins.user-id', 'string', null)
         ->setDescription(pht('Username for accessing Jenkins.')),
       $this->newOption('jenkins.api-token', 'string', null)
-        ->setMasked(true)
+        ->setHidden(true)
         ->setDescription(pht('API token for accessing Jenkins.')),
     );
   }
