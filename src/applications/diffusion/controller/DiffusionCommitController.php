@@ -274,11 +274,11 @@ final class DiffusionCommitController extends DiffusionController {
         DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
 
       $options = array(
-        DifferentialChangesetParser::WHITESPACE_IGNORE_FORCE => 'Ignore All',
-        DifferentialChangesetParser::WHITESPACE_IGNORE_ALL => 'Ignore Most',
+        DifferentialChangesetParser::WHITESPACE_IGNORE_ALL => pht('Ignore All'),
+        DifferentialChangesetParser::WHITESPACE_IGNORE_MOST => pht('Ignore Most'),
         DifferentialChangesetParser::WHITESPACE_IGNORE_TRAILING =>
-          'Ignore Trailing',
-        DifferentialChangesetParser::WHITESPACE_SHOW_ALL => 'Show All',
+          pht('Ignore Trailing'),
+        DifferentialChangesetParser::WHITESPACE_SHOW_ALL => pht('Show All'),
       );
 
       foreach ($options as $value => $label) {
