@@ -8,6 +8,7 @@ final class AphrontFormSelectControl extends AphrontFormControl {
 
   private $options;
   private $disabledOptions = array();
+  private $multiple = false;
 
   public function setOptions(array $options) {
     $this->options = $options;
@@ -23,13 +24,36 @@ final class AphrontFormSelectControl extends AphrontFormControl {
     return $this;
   }
 
+  public function setMultiple($multiple) {
+    $this->multiple = $multiple;
+    return $this;
+  }
+
+  public function readValueFromRequest(AphrontRequest $request) {
+    if (!$this->multiple) {
+      return parent::readValueFromRequest($request);
+    }
+
+    $this->setValue($request->getArr($this->getName()));
+    return $this;
+  }
+
+  public function setValue($value) {
+    if ($this->multiple && !is_array($value)) {
+      throw new Exception('Multi-select value must be an array');
+    }
+
+    return parent::setValue($value);
+  }
+
   protected function renderInput() {
     return self::renderSelectTag(
       $this->getValue(),
       $this->getOptions(),
       array(
-        'name'      => $this->getName(),
+        'name'      => $this->getName().($this->multiple ? '[]' : ''),
         'disabled'  => $this->getDisabled() ? 'disabled' : null,
+        'multiple'  => $this->multiple ? 'multiple' : null,
         'id'        => $this->getID(),
       ),
       $this->disabledOptions);
@@ -54,6 +78,7 @@ final class AphrontFormSelectControl extends AphrontFormControl {
     array $options,
     array $disabled = array()) {
     $disabled = array_fuse($disabled);
+    $selected = (array)$selected;
 
     $tags = array();
     foreach ($options as $value => $thing) {
@@ -68,7 +93,7 @@ final class AphrontFormSelectControl extends AphrontFormControl {
         $tags[] = phutil_tag(
           'option',
           array(
-            'selected' => ($value == $selected) ? 'selected' : null,
+            'selected' => in_array($value, $selected) ? 'selected' : null,
             'value'    => $value,
             'disabled' => isset($disabled[$value]) ? 'disabled' : null,
           ),
