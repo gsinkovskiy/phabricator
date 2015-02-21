@@ -112,6 +112,7 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
     }
 
     $commit->setSummary($data->getSummary());
+    $this->detectCommitType($commit);
     $commit->save();
 
     // Figure out if we're going to try to "autoclose" related objects (e.g.,
@@ -273,6 +274,34 @@ abstract class PhabricatorRepositoryCommitMessageParserWorker
 
     $commit->writeImportStatusFlag(
       PhabricatorRepositoryCommit::IMPORTED_MESSAGE);
+  }
+
+  private function detectCommitType(PhabricatorRepositoryCommit $commit) {
+    list($commit_prefix,) = $commit->parseCommitMessage();
+
+    $regs = null;
+    if (!preg_match('/^fixes: (.*)$/', $commit_prefix, $regs)) {
+      return;
+    }
+
+    $viewer = PhabricatorUser::getOmnipotentUser();
+
+    $drequest = DiffusionRequest::newFromDictionary(array(
+      'user' => $viewer,
+      'repository' => $this->repository,
+    ));
+
+    $result = DiffusionQuery::callConduitWithDiffusionRequest(
+      $viewer,
+      $drequest,
+      'diffusion.querycommits',
+      array(
+        'names' => array($regs[1]),
+      ));
+
+    if ($result['data']) {
+      $commit->setCommitType(PhabricatorCommitType::COMMIT_FIX);
+    }
   }
 
   private function generateFinalDiff(

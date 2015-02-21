@@ -12,7 +12,9 @@ final class PhabricatorAuditListView extends AphrontView {
   private $commitAudits = array();
   private $commitAuditorsHTML = array();
 
-  private $inverseMentions = array();
+  private $transactions = array();
+  private $inverseMentionMap = array();
+  private $inverseMentionCommits = array();
 
   public function setHandles(array $handles) {
     assert_instances_of($handles, 'PhabricatorObjectHandle');
@@ -59,51 +61,7 @@ final class PhabricatorAuditListView extends AphrontView {
       }
     }
 
-    $this->prepareInverseMentions();
-
-    foreach ($this->inverseMentions as $commit_phid => $inverse_mentions) {
-      foreach ($inverse_mentions as $object_phid) {
-        $phids[$object_phid] = true;
-      }
-    }
-
     return array_keys($phids);
-  }
-
-  private function prepareInverseMentions() {
-    $commits = $this->getCommits();
-    $xactions = id(new PhabricatorAuditTransactionQuery())
-      ->setViewer($this->getUser())
-      ->withObjectPHIDs(array_keys($commits))
-      ->withTransactionTypes(array(
-        PhabricatorTransactions::TYPE_EDGE,
-      ))
-      ->execute();
-
-    foreach ($xactions as $xaction) {
-      if (head($xaction->getMetadata('edge:type')) !==
-        PhabricatorObjectMentionedByObjectEdgeType::EDGECONST
-      ) {
-        continue;
-      }
-
-      $commit_phid = $xaction->getObjectPHID();
-      if (!idx($this->inverseMentions, $commit_phid)) {
-        $this->inverseMentions[$commit_phid] = array();
-      }
-
-      foreach ($xaction->getNewValue() as $edge_data) {
-        $mentioned_by_phid = $edge_data['dst'];
-
-        if (phid_get_type($mentioned_by_phid) ===
-          PhabricatorRepositoryCommitPHIDType::TYPECONST
-        ) {
-          $this->inverseMentions[$commit_phid][$mentioned_by_phid] = true;
-        };
-      }
-    }
-
-    $this->inverseMentions = array_map('array_keys', $this->inverseMentions);
   }
 
   private function getHandle($phid) {
@@ -124,12 +82,12 @@ final class PhabricatorAuditListView extends AphrontView {
       return pht('(Unknown Commit)');
     }
 
-    $summary = $commit->getCommitData()->getSummary();
+    $summary = $commit->getSummary();
     if (strlen($summary)) {
       return $summary;
     }
 
-    // No summary, so either this is still impoting or just has an empty
+    // No summary, so either this is still importing or just has an empty
     // commit message.
 
     if (!$commit->isImported()) {
@@ -152,7 +110,10 @@ final class PhabricatorAuditListView extends AphrontView {
     }
     $rowc = array();
 
+    $this->prepareTransactions();
     $this->prepareAuditorInformation();
+    $this->prepareInverseMentions();
+
     $modification_dates = $this->getCommitsDateModified();
 
     $fresh = PhabricatorEnv::getEnvConfig('differential.days-fresh');
@@ -197,11 +158,10 @@ final class PhabricatorAuditListView extends AphrontView {
       $commit_link = $commit_handle->getURI();
       $commit_desc = $this->getCommitDescription($commit_phid);
 
-      $fix_desc = '';
-      $regs = array();
-      if (preg_match('/^\[(fixes: [^\]]*)\](.*)$/s', $commit_desc, $regs)) {
-        $fix_desc = ucfirst($regs[1]);
-        $commit_desc = ltrim($regs[2]);
+      $commit_prefix = '';
+      if ($commit->getCommitType() == PhabricatorCommitType::COMMIT_FIX) {
+        list ($commit_prefix, $commit_desc) =
+          $commit->parseCommitMessage($commit_desc);
       }
 
       $audit = idx($this->commitAudits, $commit_phid);
@@ -219,7 +179,6 @@ final class PhabricatorAuditListView extends AphrontView {
         $status_text = null;
         $status_color = null;
       }
-      $author_name = $commit->getCommitData()->getAuthorName();
 
       $item = id(new PHUIObjectItemView())
         ->setUser($user)
@@ -228,41 +187,27 @@ final class PhabricatorAuditListView extends AphrontView {
         ->setHref($commit_link)
         ->setBarColor($status_color);
 
-      if ($fix_desc) {
+      // Add icon indicating, that this commit is a fix commit.
+      if ($commit_prefix) {
         $actual_fix_icon = clone $fix_icon;
         $actual_fix_icon->setMetadata(
           array(
-            'tip' => $fix_desc,
+            'tip' => ucfirst($commit_prefix),
           ));
 
         $item->addAttribute($actual_fix_icon);
       }
 
-      $inverse_mentions = idx($this->inverseMentions, $commit_phid);
-      if ($inverse_mentions) {
-        $fixed_in = array();
-        $is_fix_regexp =
-          '/\[fixes: '.preg_quote($commit_handle->getName(), '/').'\]/';
+      // Add icon indicating, that this commit is fixed by other commit(-s).
+      $fixed_in = $this->getFixCommits($commit_handle);
+      if ($fixed_in) {
+        $actual_fixed_by_icon = clone $fixed_by_icon;
+        $actual_fixed_by_icon->setMetadata(
+          array(
+            'tip' => 'Fixed in: '.implode(', ', $fixed_in),
+          ));
 
-        foreach ($inverse_mentions as $inverse_mention_phid) {
-          $inverse_mention = $this->getHandle($inverse_mention_phid);
-          $is_fix = preg_match($is_fix_regexp,
-            $inverse_mention->getFullName());
-
-          if ($is_fix) {
-            $fixed_in[] = $inverse_mention->getName();
-          }
-        }
-
-        if ($fixed_in) {
-          $actual_fixed_by_icon = clone $fixed_by_icon;
-          $actual_fixed_by_icon->setMetadata(
-            array(
-              'tip' => 'Fixed in: '.implode(', ', $fixed_in),
-            ));
-
-          $item->addAttribute($actual_fixed_by_icon);
-        }
+        $item->addAttribute($actual_fixed_by_icon);
       }
 
       if ($commit->getDrafts($user)) {
@@ -291,9 +236,10 @@ final class PhabricatorAuditListView extends AphrontView {
 
       // Author
       $author_phid = $commit->getAuthorPHID();
-
       if ($author_phid !== null) {
         $author_name = $this->getHandle($author_phid)->renderLink();
+      } else {
+        $author_name = $commit->getCommitData()->getAuthorName();
       }
 
       $item->addByline(pht('Author: %s', $author_name));
@@ -341,46 +287,134 @@ final class PhabricatorAuditListView extends AphrontView {
   }
 
   private function getCommitsDateModified() {
-    $commit_phids = array();
-    $modification_dates = array();
+    $modification_dates = $this->getCommitDatesWithOpenAudits();
 
-    $statuses = array(
-      PhabricatorAuditStatusConstants::AUDIT_REQUIRED => true,
-      PhabricatorAuditStatusConstants::CONCERNED => true,
-      PhabricatorAuditStatusConstants::AUDIT_REQUESTED => true,
-    );
-
-    foreach ($this->commitAudits as $commit_phid => $audit) {
-      if (idx($statuses, $audit->getAuditStatus())) {
-        $commit_phids[] = $commit_phid;
-
-        // Allows to handle old commits without transactions.
-        $modification_dates[$commit_phid] =
-          $this->commits[$commit_phid]->getEpoch();
-      }
-    }
-
-    if (!$commit_phids) {
+    if (!$modification_dates) {
       return array();
     }
 
-    $xactions = id(new PhabricatorAuditTransactionQuery())
-      ->setViewer($this->getUser())
-      ->withObjectPHIDs($commit_phids)
-      ->withTransactionTypes(array(
-        PhabricatorAuditActionConstants::ADD_AUDITORS,
-        PhabricatorAuditActionConstants::ACTION,
-      ))
-      ->execute();
+    $watch_types = array(
+      PhabricatorAuditActionConstants::ADD_AUDITORS,
+      PhabricatorAuditActionConstants::ACTION,);
 
-    // Constants of "PhabricatorAuditActionConstants" class can
-    // tell audit result of each transaction.
-    foreach ($xactions as $xaction) {
-      $modification_dates[$xaction->getObjectPHID()] =
-        $xaction->getDateModified();
+    foreach ($this->transactions as $xaction) {
+      if (in_array($xaction->getTransactionType(), $watch_types)) {
+        $modification_dates[$xaction->getObjectPHID()] =
+          $xaction->getDateModified();
+      }
     }
 
     return $modification_dates;
   }
 
+  private function getCommitDatesWithOpenAudits() {
+    $commit_dates = array();
+    $statuses = PhabricatorAuditStatusConstants::getOpenStatusConstants();
+
+    foreach ($this->commitAudits as $commit_phid => $audit) {
+      if (in_array($audit->getAuditStatus(), $statuses)) {
+        $commit_dates[$commit_phid] = $this->commits[$commit_phid]->getEpoch();
+      }
+    }
+
+    return $commit_dates;
+  }
+
+  private function getFixCommits(PhabricatorObjectHandle $commit_handle) {
+    $inverse_mentions =
+      idx($this->inverseMentionMap, $commit_handle->getPHID());
+
+    if (!$inverse_mentions) {
+     return array();
+    }
+
+    $fixed_in = array();
+    $expected_fix_commit_prefix = 'fixes: '.$commit_handle->getName();
+
+    foreach ($inverse_mentions as $inverse_mention_phid) {
+      $fix_commit = $this->inverseMentionCommits[$inverse_mention_phid];
+
+      if ($fix_commit->getCommitType() != PhabricatorCommitType::COMMIT_FIX) {
+        continue;
+      }
+
+      list ($fix_commit_prefix,) = $fix_commit->parseCommitMessage();
+
+      if ($fix_commit_prefix == $expected_fix_commit_prefix) {
+        $fixed_in[] = $fix_commit->getRepository()->formatCommitName(
+          $fix_commit->getCommitIdentifier());
+      }
+    }
+
+    return $fixed_in;
+  }
+
+  private function prepareInverseMentions() {
+    if (!$this->transactions) {
+      return;
+    }
+
+    $inverse_mentions = array();
+    $type_const = PhabricatorRepositoryCommitPHIDType::TYPECONST;
+    $edge_const = PhabricatorObjectMentionedByObjectEdgeType::EDGECONST;
+
+    foreach ($this->transactions as $xaction) {
+      if ($xaction->getTransactionType() != PhabricatorTransactions::TYPE_EDGE
+        || head($xaction->getMetadata('edge:type')) !== $edge_const
+      ) {
+        continue;
+      }
+
+      $commit_phid = $xaction->getObjectPHID();
+      if (!idx($inverse_mentions, $commit_phid)) {
+        $inverse_mentions[$commit_phid] = array();
+      }
+
+      foreach ($xaction->getNewValue() as $edge_data) {
+        $mentioned_by_phid = $edge_data['dst'];
+
+        if (phid_get_type($mentioned_by_phid) === $type_const) {
+          $inverse_mentions[$commit_phid][$mentioned_by_phid] = true;
+        };
+      }
+    }
+
+    $this->inverseMentionMap = array_map('array_keys', $inverse_mentions);
+    $this->queryInverseMentionCommits();
+  }
+
+  private function queryInverseMentionCommits() {
+    if (!$this->inverseMentionMap) {
+      return;
+    }
+
+    $phids = call_user_func_array('array_merge', $this->inverseMentionMap);
+
+    if (!$phids) {
+      return;
+    }
+
+    $commits = id(new DiffusionCommitQuery())
+      ->setViewer($this->getUser())
+      ->withPHIDs($phids)
+      ->execute();
+
+    $this->inverseMentionCommits = mpull($commits, null, 'getPHID');
+  }
+
+  private function prepareTransactions() {
+    $this->transactions = id(new PhabricatorAuditTransactionQuery())
+      ->setViewer($this->getUser())
+      ->withObjectPHIDs(array_keys($this->getCommits()))
+      ->needHandles(false)
+      ->withTransactionTypes(array(
+        // Only commits, that needs audit have these.
+        PhabricatorAuditActionConstants::ADD_AUDITORS,
+        PhabricatorAuditActionConstants::ACTION,
+
+        // Any commit can have these.
+        PhabricatorTransactions::TYPE_EDGE,
+      ))
+      ->execute();
+  }
 }

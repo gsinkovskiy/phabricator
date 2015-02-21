@@ -1485,6 +1485,7 @@ phutil_register_library_map(array(
     'PhabricatorCommitCustomField' => 'applications/repository/customfield/PhabricatorCommitCustomField.php',
     'PhabricatorCommitSearchEngine' => 'applications/audit/query/PhabricatorCommitSearchEngine.php',
     'PhabricatorCommitTagsField' => 'applications/repository/customfield/PhabricatorCommitTagsField.php',
+    'PhabricatorCommitType' => 'applications/repository/constants/PhabricatorCommitType.php',
     'PhabricatorCommonPasswords' => 'applications/auth/constants/PhabricatorCommonPasswords.php',
     'PhabricatorConduitAPIController' => 'applications/conduit/controller/PhabricatorConduitAPIController.php',
     'PhabricatorConduitApplication' => 'applications/conduit/application/PhabricatorConduitApplication.php',
