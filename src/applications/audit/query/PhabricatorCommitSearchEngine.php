@@ -39,6 +39,7 @@ final class PhabricatorCommitSearchEngine
     $query = id(new DiffusionCommitQuery())
       ->needAuditRequests(true)
       ->needCommitData(true)
+      ->needFlags(true)
       ->needDrafts(true);
 
     $auditor_phids = $saved->getParameter('auditorPHIDs', array());

@@ -210,6 +210,19 @@ final class PhabricatorAuditListView extends AphrontView {
         $item->addAttribute($actual_fixed_by_icon);
       }
 
+      $flag = $commit->getFlag($user);
+      if ($flag) {
+        $flag_class = PhabricatorFlagColor::getCSSClass($flag->getColor());
+        $flag_icon = phutil_tag(
+          'div',
+          array(
+            'class' => 'phabricator-flag-icon '.$flag_class,
+          ),
+          '');
+
+        $item->addHeadIcon($flag_icon);
+      }
+
       if ($commit->getDrafts($user)) {
         $item->addAttribute($draft_icon);
       }

@@ -35,6 +35,7 @@ final class PhabricatorRepositoryCommit
   private $commitData = self::ATTACHABLE;
   private $audits = self::ATTACHABLE;
   private $drafts = array();
+  private $flags = array();
   private $repository = self::ATTACHABLE;
   private $customFields = self::ATTACHABLE;
 
@@ -166,6 +167,17 @@ final class PhabricatorRepositoryCommit
       }
     }
     return $authority_audits;
+  }
+
+  public function getFlag(PhabricatorUser $viewer) {
+    return $this->assertAttachedKey($this->flags, $viewer->getPHID());
+  }
+
+  public function attachFlag(
+    PhabricatorUser $viewer,
+    PhabricatorFlag $flag = null) {
+    $this->flags[$viewer->getPHID()] = $flag;
+    return $this;
   }
 
   public function getDrafts(PhabricatorUser $viewer) {
