@@ -17,19 +17,30 @@
 .differential-diff {
   background: #fff;
   width: 100%;
-  min-width: 780px;
   border-top: 1px solid {$lightblueborder};
   border-bottom: 1px solid {$lightblueborder};
   table-layout: fixed;
+}
+
+.differential-diff.diff-2up {
+  min-width: 780px;
 }
 
 .differential-diff col.num {
   width: 45px;
 }
 
-.differential-diff col.left,
-.differential-diff col.right {
+.device .differential-diff.diff-1up col.num {
+  width: 32px;
+}
+
+.differential-diff.diff-2up col.left,
+.differential-diff.diff-2up col.right {
   width: 49.25%;
+}
+
+.differential-diff.diff-1up col.unified {
+  width: 99.5%;
 }
 
 .differential-diff col.copy {
@@ -48,6 +59,10 @@
   line-height:        16px;
 }
 
+.device .differential-diff td {
+  padding: 0 4px 1px;
+}
+
 .differential-diff td .zwsp {
   position: absolute;
   width: 0;
@@ -61,7 +76,6 @@
   color:              {$bluetext};
   cursor:             pointer;
   border-right:       1px solid {$thinblueborder};
-  font-size:          11px;
   overflow:           hidden;
 
   -moz-user-select:     -moz-none;
@@ -164,8 +178,6 @@ td.cov-I {
   background: #f3f6ff;
 }
 
-
-
 .differential-diff td.show-more,
 .differential-diff th.show-context-line,
 .differential-diff td.show-context,
@@ -176,9 +188,16 @@ td.cov-I {
   border-bottom: 1px solid {$thinblueborder};
 }
 
+.device .differential-diff td.show-more,
+.device .differential-diff th.show-context-line,
+.device .differential-diff td.show-context,
+.device .differential-diff td.differential-shield {
+  padding: 6px 0;
+}
+
 .differential-diff td.show-more,
 .differential-diff td.differential-shield {
-  font-family: "Helvetica Neue", "Arial", sans-serif;
+  font: {$basefont};
   font-size:   12px;
   white-space: normal;
 }
@@ -255,7 +274,7 @@ td.cov-I {
 .differential-inline-comment-edit {
   background:         #ffffee;
   border:             1px solid #ccccaa;
-  font-family:        "Helvetica Neue", "Arial", sans-serif;
+  font:               {$basefont};
   font-size:          12px;
   margin:             6px 0px;
   padding:            8px 10px;

@@ -130,11 +130,14 @@ final class DifferentialChangesetListView extends AphrontView {
           'Configure Editor' => pht('Configure Editor'),
           'Load Changes' => pht('Load Changes'),
           'View Side-by-Side' => pht('View Side-by-Side'),
-          'View Unified' => pht('View Unified (Barely Works!)'),
+          'View Unified' => pht('View Unified'),
           'Change Text Encoding...' => pht('Change Text Encoding...'),
           'Highlight As...' => pht('Highlight As...'),
         ),
       ));
+
+    $renderer = DifferentialChangesetParser::getDefaultRendererForViewer(
+      $this->getUser());
 
     $output = array();
     $ids = array();
@@ -148,7 +151,8 @@ final class DifferentialChangesetListView extends AphrontView {
 
       $ref = $this->references[$key];
 
-      $detail = new DifferentialChangesetDetailView();
+      $detail = id(new DifferentialChangesetDetailView())
+        ->setUser($this->getUser());
 
       $uniq_id = 'diff-'.$changeset->getAnchorName();
       $detail->setID($uniq_id);
@@ -168,6 +172,7 @@ final class DifferentialChangesetListView extends AphrontView {
 
       $detail->setRenderURI($this->renderURI);
       $detail->setWhitespace($this->whitespace);
+      $detail->setRenderer($renderer);
 
       if (isset($this->visibleChangesets[$key])) {
         $load = 'Loading...';
@@ -202,11 +207,6 @@ final class DifferentialChangesetListView extends AphrontView {
 
     $this->initBehavior('differential-populate', array(
       'changesetViewIDs' => $ids,
-    ));
-
-    $this->initBehavior('differential-show-more', array(
-      'uri' => $this->renderURI,
-      'whitespace' => $this->whitespace,
     ));
 
     $this->initBehavior('differential-comment-jump', array());

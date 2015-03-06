@@ -7,6 +7,14 @@ final class DifferentialChangesetTwoUpRenderer
     return false;
   }
 
+  protected function getRendererTableClass() {
+    return 'diff-2up';
+  }
+
+  public function getRendererKey() {
+    return '2up';
+  }
+
   protected function renderColgroup() {
     return phutil_tag('colgroup', array(), array(
       phutil_tag('col', array('class' => 'num')),
@@ -47,19 +55,8 @@ final class DifferentialChangesetTwoUpRenderer
     $new_lines = $this->getNewLines();
     $gaps = $this->getGaps();
     $reference = $this->getRenderingReference();
-    $left_id = $this->getOldChangesetID();
-    $right_id = $this->getNewChangesetID();
 
-    // "N" stands for 'new' and means the comment should attach to the new file
-    // when stored, i.e. DifferentialInlineComment->setIsNewFile().
-    // "O" stands for 'old' and means the comment should attach to the old file.
-
-    $left_char = $this->getOldAttachesToNewFile()
-      ? 'N'
-      : 'O';
-    $right_char = $this->getNewAttachesToNewFile()
-      ? 'N'
-      : 'O';
+    list($left_prefix, $right_prefix) = $this->getLineIDPrefixes();
 
     $changeset = $this->getChangeset();
     $copy_lines = idx($changeset->getMetadata(), 'copy:lines', array());
@@ -83,66 +80,11 @@ final class DifferentialChangesetTwoUpRenderer
         $top = $gap[0];
         $len = $gap[1];
 
-        $end   = $top + $len - 20;
-
-        $contents = array();
-
-        if ($len > 40) {
-          $is_first_block = false;
-          if ($ii == 0) {
-            $is_first_block = true;
-          }
-
-          $contents[] = javelin_tag(
-            'a',
-            array(
-              'href' => '#',
-              'mustcapture' => true,
-              'sigil'       => 'show-more',
-              'meta'        => array(
-                'ref'    => $reference,
-                'range' => "{$top}-{$len}/{$top}-20",
-              ),
-            ),
-            $is_first_block
-              ? pht('Show First 20 Lines')
-              : pht("\xE2\x96\xB2 Show 20 Lines"));
-        }
-
-        $contents[] = javelin_tag(
-          'a',
-          array(
-            'href' => '#',
-            'mustcapture' => true,
-            'sigil'       => 'show-more',
-            'meta'        => array(
-              'type'   => 'all',
-              'ref'    => $reference,
-              'range'  => "{$top}-{$len}/{$top}-{$len}",
-            ),
-          ),
-          pht('Show All %d Lines', $len));
+        $contents = $this->renderShowContextLinks($top, $len, $rows);
 
         $is_last_block = false;
         if ($ii + $len >= $rows) {
           $is_last_block = true;
-        }
-
-        if ($len > 40) {
-          $contents[] = javelin_tag(
-            'a',
-            array(
-              'href' => '#',
-              'mustcapture' => true,
-              'sigil'       => 'show-more',
-              'meta'        => array(
-                'ref'    => $reference,
-                'range' => "{$top}-{$len}/{$end}-20",
-              ),
-            ),
-            $is_last_block
-              ? pht('Show Last 20 Lines')
-              : pht("\xE2\x96\xBC Show 20 Lines"));
         }
 
         $context = null;
@@ -170,9 +112,7 @@ final class DifferentialChangesetTwoUpRenderer
                 'colspan' => 2,
                 'class' => 'show-more',
               ),
-              phutil_implode_html(
-                " \xE2\x80\xA2 ", // Bullet
-                $contents)),
+              $contents),
             phutil_tag(
               'th',
               array(
@@ -283,14 +223,14 @@ final class DifferentialChangesetTwoUpRenderer
         $html[] = $context_not_available;
       }
 
-      if ($o_num && $left_id) {
-        $o_id = 'C'.$left_id.$left_char.'L'.$o_num;
+      if ($o_num && $left_prefix) {
+        $o_id = $left_prefix.$o_num;
       } else {
         $o_id = null;
       }
 
-      if ($n_num && $right_id) {
-        $n_id = 'C'.$right_id.$right_char.'L'.$n_num;
+      if ($n_num && $right_prefix) {
+        $n_id = $right_prefix.$n_num;
       } else {
         $n_id = null;
       }
@@ -299,9 +239,6 @@ final class DifferentialChangesetTwoUpRenderer
       // intercepting 'copy' events to make sure sensible text ends up on the
       // clipboard. See the 'phabricator-oncopy' behavior.
       $zero_space = "\xE2\x80\x8B";
-
-      // NOTE: The Javascript is sensitive to whitespace changes in this
-      // block!
 
       $html[] = phutil_tag('tr', array(), array(
         phutil_tag('th', array('id' => $o_id), $o_num),

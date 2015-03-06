@@ -154,14 +154,8 @@ final class DifferentialChangesetViewController extends DifferentialController {
     $parser->setRenderCacheKey($render_cache_key);
     $parser->setRightSideCommentMapping($right_source, $right_new);
     $parser->setLeftSideCommentMapping($left_source, $left_new);
-    $parser->setWhitespaceMode($request->getStr('whitespace'));
-    $parser->setCharacterEncoding($request->getStr('encoding'));
-    $parser->setHighlightAs($request->getStr('highlight'));
 
-    if ($request->getStr('renderer') == '1up') {
-      $parser->setRenderer(new DifferentialChangesetOneUpRenderer());
-    }
-
+    $parser->readParametersFromRequest($request);
 
     if ($left && $right) {
       $parser->setOriginals($left, $right);
@@ -229,21 +223,24 @@ final class DifferentialChangesetViewController extends DifferentialController {
         ->setCoverage($coverage);
     }
 
-    Javelin::initBehavior('differential-show-more', array(
-      'uri' => '/differential/changeset/',
-      'whitespace' => $request->getStr('whitespace'),
-    ));
-
-    Javelin::initBehavior('differential-comment-jump', array());
-
     // TODO: [HTML] Clean up DifferentialChangesetParser output, but it's
     // undergoing like six kinds of refactoring anyway.
     $output = phutil_safe_html($output);
 
-    $detail = new DifferentialChangesetDetailView();
-    $detail->setChangeset($changeset);
-    $detail->appendChild($output);
-    $detail->setVsChangesetID($left_source);
+    $detail = id(new DifferentialChangesetDetailView())
+      ->setUser($this->getViewer())
+      ->setChangeset($changeset)
+      ->setRenderingRef($rendering_reference)
+      ->setRenderURI('/differential/changeset/')
+      ->setRenderer($parser->getRenderer()->getRendererKey())
+      ->appendChild($output)
+      ->setVsChangesetID($left_source);
+
+    Javelin::initBehavior('differential-populate', array(
+      'changesetViewIDs' => array($detail->getID()),
+    ));
+
+    Javelin::initBehavior('differential-comment-jump', array());
 
     $panel = new DifferentialPrimaryPaneView();
     $panel->appendChild(
