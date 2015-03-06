@@ -22,6 +22,7 @@ final class PhabricatorFlagSearchEngine
   public function buildQueryFromSavedQuery(PhabricatorSavedQuery $saved) {
     $query = id(new PhabricatorFlagQuery())
       ->needHandles(true)
+      ->needObjects(true)
       ->withOwnerPHIDs(array($this->requireViewer()->getPHID()));
 
     $colors = $saved->getParameter('colors');
@@ -151,6 +152,11 @@ final class PhabricatorFlagSearchEngine
         ->addHeadIcon($flag_icon)
         ->setHeader($flag->getHandle()->getFullName())
         ->setHref($flag->getHandle()->getURI());
+
+      $object = $flag->getObject();
+      if ($object instanceof PhabricatorBarColorInterface) {
+        $item->setBarColor($object->getBarColor());
+      }
 
       $item->addAction(
         id(new PHUIListItemView())

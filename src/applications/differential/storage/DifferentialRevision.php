@@ -5,6 +5,7 @@ final class DifferentialRevision extends DifferentialDAO
     PhabricatorTokenReceiverInterface,
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorBarColorInterface,
     PhrequentTrackableInterface,
     HarbormasterBuildableInterface,
     PhabricatorSubscribableInterface,
@@ -592,6 +593,27 @@ final class DifferentialRevision extends DifferentialDAO
 
       $this->delete();
     $this->saveTransaction();
+  }
+
+/* -(  PhabricatorBarColorInterface  )--------------------------------------- */
+
+  public function getBarColor() {
+    $status = $this->getStatus();
+
+    switch ($status) {
+      case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
+      case ArcanistDifferentialRevisionStatus::CHANGES_PLANNED:
+        return 'red';
+        break;
+      case ArcanistDifferentialRevisionStatus::ACCEPTED:
+        return 'green';
+        break;
+      case ArcanistDifferentialRevisionStatus::ABANDONED:
+        return 'black';
+        break;
+    }
+
+    return '';
   }
 
 }

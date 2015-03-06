@@ -5,6 +5,7 @@ final class PhabricatorRepositoryCommit
   implements
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorBarColorInterface,
     PhabricatorProjectInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorSubscribableInterface,
@@ -465,6 +466,26 @@ final class PhabricatorRepositoryCommit
     }
 
     return $timeline->setPathMap($path_map);
+  }
+
+/* -(  PhabricatorBarColorInterface  )--------------------------------------- */
+
+  public function getBarColor() {
+    $mapping = array(
+      PhabricatorAuditCommitStatusConstants::NONE =>
+        PhabricatorAuditStatusConstants::NONE,
+      PhabricatorAuditCommitStatusConstants::NEEDS_AUDIT =>
+        PhabricatorAuditStatusConstants::AUDIT_REQUIRED,
+      PhabricatorAuditCommitStatusConstants::CONCERN_RAISED =>
+        PhabricatorAuditStatusConstants::CONCERNED,
+      PhabricatorAuditCommitStatusConstants::PARTIALLY_AUDITED =>
+        PhabricatorAuditStatusConstants::AUDIT_REQUESTED,
+      PhabricatorAuditCommitStatusConstants::FULLY_AUDITED =>
+        PhabricatorAuditStatusConstants::ACCEPTED,
+    );
+
+    return PhabricatorAuditStatusConstants::getStatusColor(
+      $mapping[$this->getAuditStatus()]);
   }
 
 }
