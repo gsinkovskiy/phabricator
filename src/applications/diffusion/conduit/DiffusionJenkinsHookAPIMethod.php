@@ -138,20 +138,30 @@ final class DiffusionJenkinsHookAPIMethod
   }
 
   private function guessRevision($job_info) {
-    if ($job_info->changeSet->items) {
+    if ($this->verifyChangesetProperty($job_info->changeSet, 'items')) {
       // Build triggered by commit > take it's revision.
       return $job_info->changeSet->items[0]->revision;
     }
 
-    // Build triggered manually > get "trunk/stable tag" revision.
-    foreach ($job_info->changeSet->revisions as $revision) {
-      if (preg_match('/(trunk|tags\/stable)$/', $revision->module)) {
-        return $revision->revision;
+    if ($this->verifyChangesetProperty($job_info->changeSet, 'revisions')) {
+      // Build triggered manually > get "trunk/stable tag" revision.
+      foreach ($job_info->changeSet->revisions as $revision) {
+        if (preg_match('/(trunk|tags\/stable)$/', $revision->module)) {
+          return $revision->revision;
+        }
       }
     }
 
     $message = 'Unable to determine revision from build "%s" information';
     throw new Exception(sprintf($message, $job_info->fullDisplayName));
+  }
+
+  private function verifyChangesetProperty(stdClass $changeset, $property) {
+    if (!property_exists($changeset, $property) || !$changeset->$property) {
+      return false;
+    }
+
+    return is_array($changeset->$property) && count($changeset->$property) > 0;
   }
 
   private function getCommitFiles(DiffusionRequest $drequest) {
