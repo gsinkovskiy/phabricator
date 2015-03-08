@@ -9,17 +9,36 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
 
   public function isStoryAboutObjectCreation($object) {
     $story = $this->getFeedStory();
-    $action = $story->getStoryData()->getValue('action');
+    $xaction = $story->getPrimaryTransaction();
 
-    return ($action == DifferentialAction::ACTION_CREATE);
+    switch ($xaction->getTransactionType()) {
+      case DifferentialTransaction::TYPE_ACTION:
+        return $xaction->getNewValue() == DifferentialAction::ACTION_CREATE;
+    		break;
+
+      case PhabricatorTransactions::TYPE_CUSTOMFIELD:
+        $custom_field_name = $xaction->getMetadataValue('customfield:key');
+        if ($custom_field_name == 'differential:title' && !strlen($xaction->getOldValue())) {
+          return true;
+        }
+        break;
+    }
+
+    return false;
   }
 
   public function isStoryAboutObjectClosure($object) {
     $story = $this->getFeedStory();
-    $action = $story->getStoryData()->getValue('action');
+    $xaction = $story->getPrimaryTransaction();
 
-    return ($action == DifferentialAction::ACTION_CLOSE) ||
-           ($action == DifferentialAction::ACTION_ABANDON);
+    if ($xaction->getTransactionType() == DifferentialTransaction::TYPE_ACTION) {
+      $close_statuses = array(
+        DifferentialAction::ACTION_CLOSE, DifferentialAction::ACTION_ABANDON);
+
+      return in_array($xaction->getNewValue(), $close_statuses);
+    }
+
+    return false;
   }
 
   public function isStoryAboutObjectReview($object) {
