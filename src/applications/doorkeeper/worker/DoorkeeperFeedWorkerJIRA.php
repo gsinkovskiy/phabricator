@@ -75,58 +75,83 @@ final class DoorkeeperFeedWorkerJIRA extends DoorkeeperFeedWorker {
       $accounts = mpull($accounts, null, 'getUserPHID');
       $accounts = array_select_keys($accounts, $try_users);
 
-      $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
-
       foreach ($xobj_list as $xobj) {
         foreach ($accounts as $account) {
-          try {
-            // create/update link from Jira issue to Phabricator object
-            $object_title = $publisher->getObjectTitle($object);
-            $object_icon_title = trim(substr($object_title, 0,
-              strpos($object_title, ' ')), '[]');
-
-            $post_data = array(
-              'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.
-                $object->getPHID(),
-              'application' => array(
-                'type' => 'com.phacility.phabricator',
-                'name' => 'Phabricator',
-              ),
-              'relationship' => 'implemented in',
-              'object' => array(
-                'url' => $publisher->getObjectURI($object),
-                'title' => $object_title,
-                'icon' => array(
-                  'url16x16' => $base_uri.'/favicon.ico',
-                  'title' => $object_icon_title,
-                ),
-              ),
-            );
-
-            $provider->newJIRAFuture(
-              $account,
-              'rest/api/2/issue/'.$xobj->getObjectID().'/remotelink',
-              'POST',
-              $post_data)->resolveJSON();
-
-            // add issue comment
-            $provider->newJIRAFuture(
-              $account,
-              'rest/api/2/issue/'.$xobj->getObjectID().'/comment',
-              'POST',
-              array(
-                'body' => $story_text,
-              ))->resolveJSON();
-            break;
-          } catch (HTTPFutureResponseStatus $ex) {
-            phlog($ex);
-            $this->log(
-              "Failed to update object %s using user %s.\n",
-              $xobj->getObjectID(),
-              $account->getUserPHID());
-          }
+          $this->postLink($account, $xobj);
+          $this->addComment($account, $xobj, $story_text);
+          break;
         }
       }
+    }
+  }
+
+  private function postLink(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj) {
+
+    $object = $this->getStoryObject();
+    $publisher = $this->getPublisher();
+    $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
+
+    preg_match(
+      '/^\[([^\]]*?)\] (.*?): (.*)$/',
+      $publisher->getObjectTitle($object),
+      $regs);
+
+    $post_data = array(
+      'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.
+        $object->getPHID(),
+      'application' => array(
+        'type' => 'com.phacility.phabricator',
+        'name' => 'Phabricator',
+      ),
+      'relationship' => 'implemented in',
+      'object' => array(
+        'url' => $publisher->getObjectURI($object),
+        'title' => $regs[2], // Object identifier (e.g. D3).
+        'summary' => $regs[3], // Object title.
+        'icon' => array(
+          'url16x16' => $base_uri.'/favicon.ico',
+          'title' => $regs[1], // Application name (e.g. Differential).
+        ),
+        'status' => array(
+          'resolved' => $publisher->isObjectClosed($object)
+        ),
+      ),
+    );
+
+    try {
+      $this->getProvider()->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/remotelink',
+        'POST',
+        $post_data)->resolveJSON();
+    } catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log(
+        "Failed to create remote link on '%s' JIRA issue.\n",
+        $xobj->getObjectID());
+    }
+  }
+
+  private function addComment(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj,
+    $story_text) {
+
+    try {
+      $this->getProvider()->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/comment',
+        'POST',
+        array(
+          'body' => $story_text,
+        ))->resolveJSON();
+    } catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log(
+        "Failed to add comment to '%s' JIRA issue.\n",
+        $xobj->getObjectID());
     }
   }
 
