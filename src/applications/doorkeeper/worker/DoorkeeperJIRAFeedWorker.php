@@ -117,6 +117,8 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
               array(
                 'body' => $story_text,
               ))->resolveJSON();
+
+            $this->transitionIssue($accounts, $account, $xobj);
             break;
           } catch (HTTPFutureResponseStatus $ex) {
             phlog($ex);
@@ -130,6 +132,101 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     }
   }
 
+  private function transitionIssue(
+    array $accounts,
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj) {
+
+    $provider = $this->getProvider();
+    $provider_config = $provider->getProviderConfig();
+    $object = $this->getStoryObject();
+    $publisher = $this->getPublisher();
+
+    $review_transition_name = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_REVIEW_TRANSITION);
+    $accept_transition_name = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_ACCEPT_TRANSITION);
+    $reject_transition_name = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_REJECT_TRANSITION);
+
+    if ($review_transition_name && $publisher->isStoryAboutObjectReview($object)) {
+      $reviewer_account = idx($accounts, head($publisher->getActiveUserPHIDs($object)));
+      $reviewer_field = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_REVIEWER_FIELD);
+      $this->executeTransition($account, $xobj, $review_transition_name, array(
+        $reviewer_field => $reviewer_account->getAccountID()
+      ));
+    } elseif ($accept_transition_name && $publisher->isStoryAboutObjectAccept($object)) {
+      $this->executeTransition($account, $xobj, $accept_transition_name);
+    } elseif ($reject_transition_name && $publisher->isStoryAboutObjectReject($object)) {
+      $this->executeTransition($account, $xobj, $reject_transition_name);
+    }
+  }
+
+  private function executeTransition(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj,
+    $transition_name,
+    array $fields = array()) {
+
+    $transition_id = $this->getTransitionId($account, $xobj, $transition_name);
+    if ($transition_id === false) {
+      $this->log('Transition "'.$transition_name.'" not found for "'.$xobj->getObjectID().'" JIRA issue');
+
+      return;
+    }
+
+    $post_data = array(
+      'transition' => array(
+        'id' => $transition_id,
+      ),
+    );
+
+    if ($fields) {
+      $formatted_fields = array();
+      foreach ($fields as $field_name => $field_value) {
+        $formatted_fields[$field_name] = array(
+          'name' => $field_value,
+        );
+      }
+
+      $post_data['fields'] = $formatted_fields;
+    }
+
+    $provider = $this->getProvider();
+
+    try {
+      $provider->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/transitions',
+        'POST',
+        $post_data)->resolvex();
+    }
+    catch (HTTPFutureHTTPResponseStatus $e) {
+      $this->log('Failed executing transition "'.$transition_name.'" on "'.$xobj->getObjectID().'" JIRA issue: %s', $e->getMessage());
+    }
+  }
+
+  private function getTransitionId(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj,
+    $transition_name) {
+
+    $provider = $this->getProvider();
+
+    try {
+      $response = $provider->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/transitions',
+        'GET')->resolveJSON();
+
+      foreach ($response['transitions'] as $transition) {
+        if ($transition['name'] == $transition_name) {
+          return $transition['id'];
+        }
+      }
+    } catch (HTTPFutureHTTPResponseStatus $e) {
+      $this->log('Failed to get transitions for "'.$xobj->getObjectID().'" JIRA issue: %s', $e->getMessage());
+    }
+
+    return false;
+  }
 
 /* -(  Internals  )---------------------------------------------------------- */
 
