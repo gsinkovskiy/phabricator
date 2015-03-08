@@ -198,8 +198,9 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
         'POST',
         $post_data)->resolvex();
     }
-    catch (HTTPFutureHTTPResponseStatus $e) {
-      $this->log('Failed executing transition "'.$transition_name.'" on "'.$xobj->getObjectID().'" JIRA issue: %s', $e->getMessage());
+    catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log('Failed executing transition "'.$transition_name.'" on "'.$xobj->getObjectID().'" JIRA issue');
     }
   }
 
@@ -221,8 +222,9 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
           return $transition['id'];
         }
       }
-    } catch (HTTPFutureHTTPResponseStatus $e) {
-      $this->log('Failed to get transitions for "'.$xobj->getObjectID().'" JIRA issue: %s', $e->getMessage());
+    } catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log('Failed to get transitions for "'.$xobj->getObjectID().'" JIRA issue');
     }
 
     return false;
