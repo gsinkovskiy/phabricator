@@ -216,6 +216,7 @@ final class PhabricatorHomeMainController extends PhabricatorHomeController {
       ->setViewer($user)
       ->withStatus(DifferentialRevisionQuery::STATUS_OPEN)
       ->withResponsibleUsers(array($user_phid))
+      ->needActiveDiffs(true)
       ->needRelationships(true)
       ->needFlags(true)
       ->needDrafts(true);

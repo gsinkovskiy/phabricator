@@ -65,6 +65,7 @@ final class DifferentialRevisionSearchEngine
     $query = id(new DifferentialRevisionQuery())
       ->needFlags(true)
       ->needDrafts(true)
+      ->needActiveDiffs(true)
       ->needRelationships(true);
 
     $responsible_phids = $saved->getParameter('responsiblePHIDs', array());

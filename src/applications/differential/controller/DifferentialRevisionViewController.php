@@ -754,6 +754,7 @@ final class DifferentialRevisionViewController extends DifferentialController {
       ->setLimit(10)
       ->needFlags(true)
       ->needDrafts(true)
+      ->needActiveDiffs(true)
       ->needRelationships(true);
 
     foreach ($path_map as $path => $path_id) {

@@ -198,6 +198,7 @@ abstract class DiffusionBrowseController extends DiffusionController {
       ->withStatus(DifferentialRevisionQuery::STATUS_OPEN)
       ->setOrder(DifferentialRevisionQuery::ORDER_PATH_MODIFIED)
       ->setLimit(10)
+      ->needActiveDiffs(true)
       ->needRelationships(true)
       ->needFlags(true)
       ->needDrafts(true)

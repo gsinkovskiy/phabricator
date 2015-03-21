@@ -146,6 +146,14 @@ final class DifferentialRevisionListView extends AphrontView {
         $item->addAttribute($status_name);
       }
 
+      $diff = $revision->getActiveDiff();
+      $branch = $diff->getBranch();
+
+      if ($branch) {
+        $item->addAttribute(pht(
+          'Branch: %s', phutil_tag('em', array(), $branch)));
+      }
+
       // Author
       $author_handle = $this->handles[$revision->getAuthorPHID()];
       $item->addByline(pht('Author: %s', $author_handle->renderLink()));
