@@ -8,20 +8,12 @@ final class DiffusionCommitBranchesController extends DiffusionController {
 
   protected function processDiffusionRequest(AphrontRequest $request) {
     $drequest = $this->getDiffusionRequest();
-    $repository = $drequest->getRepository();
 
-    switch ($repository->getVersionControlSystem()) {
-      case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
-        $branches = array();
-        break;
-      default:
-        $branches = $this->callConduitWithDiffusionRequest(
-          'diffusion.branchquery',
-          array(
-            'contains' => $drequest->getCommit(),
-          ));
-        break;
-    }
+    $branches = $this->callConduitWithDiffusionRequest(
+      'diffusion.branchquery',
+      array(
+        'contains' => $drequest->getCommit(),
+      ));
 
     $branches = DiffusionRepositoryRef::loadAllFromDictionaries($branches);
     $branch_links = array();
