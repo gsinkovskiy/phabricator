@@ -261,7 +261,7 @@ final class DifferentialRevisionViewController extends DifferentialController {
       $revision_warnings = id(new PHUIInfoView())
         ->setSeverity(PHUIInfoView::SEVERITY_WARNING)
         ->setErrors($revision_warnings);
-      $revision_detail_box->setErrorView($revision_warnings);
+      $revision_detail_box->setInfoView($revision_warnings);
     }
 
     $comment_view = $this->buildTransactions(
@@ -389,7 +389,7 @@ final class DifferentialRevisionViewController extends DifferentialController {
         $review_warnings_panel = id(new PHUIInfoView())
           ->setSeverity(PHUIInfoView::SEVERITY_WARNING)
           ->setErrors($review_warnings);
-        $comment_form->setErrorView($review_warnings_panel);
+        $comment_form->setInfoView($review_warnings_panel);
       }
 
       $comment_form->setActions($this->getRevisionCommentActions($revision));
@@ -422,17 +422,43 @@ final class DifferentialRevisionViewController extends DifferentialController {
 
     $page_pane = id(new DifferentialPrimaryPaneView())
       ->setID($pane_id)
-      ->appendChild(array(
-        $comment_view,
-        $diff_history,
-        $warning,
-        $local_view,
-        $toc_view,
-        $other_view,
-        $changeset_view,
-      ));
-    if ($comment_form) {
+      ->appendChild($comment_view);
 
+    $signatures = DifferentialRequiredSignaturesField::loadForRevision(
+      $revision);
+    $missing_signatures = false;
+    foreach ($signatures as $phid => $signed) {
+      if (!$signed) {
+        $missing_signatures = true;
+      }
+    }
+
+    if ($missing_signatures) {
+      $signature_message = id(new PHUIInfoView())
+        ->setErrors(
+          array(
+            array(
+              phutil_tag('strong', array(), pht('Content Hidden:')),
+              ' ',
+              pht(
+                'The content of this revision is hidden until the author has '.
+                'signed all of the required legal agreements.'),
+            ),
+          ));
+      $page_pane->appendChild($signature_message);
+    } else {
+      $page_pane->appendChild(
+        array(
+          $diff_history,
+          $warning,
+          $local_view,
+          $toc_view,
+          $other_view,
+          $changeset_view,
+        ));
+    }
+
+    if ($comment_form) {
       $page_pane->appendChild($comment_form);
     } else {
       // TODO: For now, just use this to get "Login to Comment".
@@ -496,6 +522,13 @@ final class DifferentialRevisionViewController extends DifferentialController {
       ->setIcon('fa-pencil')
       ->setHref("/differential/revision/edit/{$revision_id}/")
       ->setName(pht('Edit Revision'))
+      ->setDisabled(!$can_edit)
+      ->setWorkflow(!$can_edit);
+
+    $actions[] = id(new PhabricatorActionView())
+      ->setIcon('fa-upload')
+      ->setHref("/differential/revision/update/{$revision_id}/")
+      ->setName(pht('Update Diff'))
       ->setDisabled(!$can_edit)
       ->setWorkflow(!$can_edit);
 
@@ -747,9 +780,12 @@ final class DifferentialRevisionViewController extends DifferentialController {
       return array();
     }
 
+    $recent = (PhabricatorTime::getNow() - phutil_units('30 days in seconds'));
+
     $query = id(new DifferentialRevisionQuery())
       ->setViewer($this->getRequest()->getUser())
       ->withStatus(DifferentialRevisionQuery::STATUS_OPEN)
+      ->withUpdatedEpochBetween($recent, null)
       ->setOrder(DifferentialRevisionQuery::ORDER_PATH_MODIFIED)
       ->setLimit(10)
       ->needFlags(true)
@@ -775,13 +811,17 @@ final class DifferentialRevisionViewController extends DifferentialController {
 
   private function renderOtherRevisions(array $revisions) {
     assert_instances_of($revisions, 'DifferentialRevision');
+    $viewer = $this->getViewer();
 
-    $user = $this->getRequest()->getUser();
+    $header = id(new PHUIHeaderView())
+      ->setHeader(pht('Similar Open Revisions'))
+      ->setSubheader(
+        pht('Recently updated open revisions affecting the same files.'));
 
     $view = id(new DifferentialRevisionListView())
-      ->setHeader(pht('Open Revisions Affecting These Files'))
+      ->setHeader($header)
       ->setRevisions($revisions)
-      ->setUser($user);
+      ->setUser($viewer);
 
     $phids = $view->getRequiredHandlePHIDs();
     $handles = $this->loadViewerHandles($phids);

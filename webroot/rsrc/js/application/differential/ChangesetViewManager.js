@@ -23,6 +23,7 @@ JX.install('ChangesetViewManager', {
     this._renderer = data.renderer;
     this._highlight = data.highlight;
     this._encoding = data.encoding;
+    this._loaded = data.loaded;
   },
 
   members: {
@@ -37,6 +38,7 @@ JX.install('ChangesetViewManager', {
     _renderer: null,
     _highlight: null,
     _encoding: null,
+    _undoTemplates: null,
 
 
     /**
@@ -188,10 +190,24 @@ JX.install('ChangesetViewManager', {
      * Receive a response to a context request.
      */
     _oncontext: function(target, response) {
-      var table = JX.$H(response.changeset).getNode();
+      // TODO: This should be better structured.
+      // If the response comes back with several top-level nodes, the last one
+      // is the actual context; the others are headers. Add any headers first,
+      // then copy the new rows into the document.
+      var markup = JX.$H(response.changeset).getFragment();
+      var len = markup.childNodes.length;
+      var diff = JX.DOM.findAbove(target, 'table', 'differential-diff');
+
+      for (var ii = 0; ii < len - 1; ii++) {
+        diff.parentNode.insertBefore(markup.firstChild, diff);
+      }
+
+      var table = markup.firstChild;
       var root = target.parentNode;
       this._moveRows(table, root, target);
       root.removeChild(target);
+
+      this._onchangesetresponse(response);
     },
 
     _moveRows: function(src, dst, before) {
@@ -253,6 +269,10 @@ JX.install('ChangesetViewManager', {
       // complicated mess and you could lose inline comments, cursor positions,
       // etc.
       return (JX.Device.getDevice() == 'desktop') ? '2up' : '1up';
+    },
+
+    getUndoTemplates: function() {
+      return this._undoTemplates;
     },
 
     setEncoding: function(encoding) {
@@ -332,6 +352,12 @@ JX.install('ChangesetViewManager', {
         this._stabilize = false;
       }
 
+      this._onchangesetresponse(response);
+    },
+
+    _onchangesetresponse: function(response) {
+      // Code shared by autoload and context responses.
+
       if (response.coverage) {
         for (var k in response.coverage) {
           try {
@@ -341,6 +367,12 @@ JX.install('ChangesetViewManager', {
           }
         }
       }
+
+      if (response.undoTemplates) {
+        this._undoTemplates = response.undoTemplates;
+      }
+
+      JX.Stratcom.invoke('differential-inline-comment-refresh');
     },
 
     _getContentFrame: function() {

@@ -33,6 +33,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
   const METADATA_IMAGE_HEIGHT = 'height';
   const METADATA_CAN_CDN = 'canCDN';
   const METADATA_BUILTIN = 'builtin';
+  const METADATA_PARTIAL = 'partial';
 
   protected $name;
   protected $mimeType;
@@ -50,6 +51,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
   protected $ttl;
   protected $isExplicitUpload = 1;
   protected $viewPolicy = PhabricatorPolicies::POLICY_USER;
+  protected $isPartial = 0;
 
   private $objects = self::ATTACHABLE;
   private $objectPHIDs = self::ATTACHABLE;
@@ -66,6 +68,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
 
     return id(new PhabricatorFile())
       ->setViewPolicy($view_policy)
+      ->setIsPartial(0)
       ->attachOriginalFile(null)
       ->attachObjects(array())
       ->attachObjectPHIDs(array());
@@ -90,6 +93,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
         'ttl' => 'epoch?',
         'isExplicitUpload' => 'bool?',
         'mailKey' => 'bytes20',
+        'isPartial' => 'bool',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'key_phid' => null,
@@ -108,6 +112,9 @@ final class PhabricatorFile extends PhabricatorFileDAO
         ),
         'key_dateCreated' => array(
           'columns' => array('dateCreated'),
+        ),
+        'key_partial' => array(
+          'columns' => array('authorPHID', 'isPartial'),
         ),
       ),
     ) + parent::getConfiguration();
@@ -155,8 +162,6 @@ final class PhabricatorFile extends PhabricatorFileDAO
       throw new Exception('File size disagrees with uploaded size.');
     }
 
-    self::validateFileSize(strlen($file_data));
-
     return $file_data;
   }
 
@@ -174,20 +179,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
   }
 
   public static function newFromXHRUpload($data, array $params = array()) {
-    self::validateFileSize(strlen($data));
     return self::newFromFileData($data, $params);
-  }
-
-  private static function validateFileSize($size) {
-    $limit = PhabricatorEnv::getEnvConfig('storage.upload-size-limit');
-    if (!$limit) {
-      return;
-    }
-
-    $limit = phutil_parse_bytes($limit);
-    if ($size > $limit) {
-      throw new PhabricatorFileUploadException(-1000);
-    }
   }
 
 
@@ -264,19 +256,63 @@ final class PhabricatorFile extends PhabricatorFileDAO
     return $file;
   }
 
+  public static function newChunkedFile(
+    PhabricatorFileStorageEngine $engine,
+    $length,
+    array $params) {
+
+    $file = PhabricatorFile::initializeNewFile();
+
+    $file->setByteSize($length);
+
+    // TODO: We might be able to test the first chunk in order to figure
+    // this out more reliably, since MIME detection usually examines headers.
+    // However, enormous files are probably always either actually raw data
+    // or reasonable to treat like raw data.
+    $file->setMimeType('application/octet-stream');
+
+    $chunked_hash = idx($params, 'chunkedHash');
+    if ($chunked_hash) {
+      $file->setContentHash($chunked_hash);
+    } else {
+      // See PhabricatorChunkedFileStorageEngine::getChunkedHash() for some
+      // discussion of this.
+      $seed = Filesystem::readRandomBytes(64);
+      $hash = PhabricatorChunkedFileStorageEngine::getChunkedHashForInput(
+        $seed);
+      $file->setContentHash($hash);
+    }
+
+    $file->setStorageEngine($engine->getEngineIdentifier());
+    $file->setStorageHandle(PhabricatorFileChunk::newChunkHandle());
+    $file->setStorageFormat(self::STORAGE_FORMAT_RAW);
+    $file->setIsPartial(1);
+
+    $file->readPropertiesFromParameters($params);
+
+    return $file;
+  }
+
   private static function buildFromFileData($data, array $params = array()) {
 
     if (isset($params['storageEngines'])) {
       $engines = $params['storageEngines'];
     } else {
-      $selector = PhabricatorEnv::newObjectFromConfig(
-        'storage.engine-selector');
-      $engines = $selector->selectStorageEngines($data, $params);
+      $size = strlen($data);
+      $engines = PhabricatorFileStorageEngine::loadStorageEngines($size);
+
+      if (!$engines) {
+        throw new Exception(
+          pht(
+            'No configured storage engine can store this file. See '.
+            '"Configuring File Storage" in the documentation for '.
+            'information on configuring storage engines.'));
+      }
     }
 
     assert_instances_of($engines, 'PhabricatorFileStorageEngine');
     if (!$engines) {
-      throw new Exception('No valid storage engines are available!');
+      throw new Exception(pht('No valid storage engines are available!'));
     }
 
     $file = PhabricatorFile::initializeNewFile();
@@ -415,35 +451,93 @@ final class PhabricatorFile extends PhabricatorFileDAO
   }
 
 
+  /**
+   * Download a remote resource over HTTP and save the response body as a file.
+   *
+   * This method respects `security.outbound-blacklist`, and protects against
+   * HTTP redirection (by manually following "Location" headers and verifying
+   * each destination). It does not protect against DNS rebinding. See
+   * discussion in T6755.
+   */
   public static function newFromFileDownload($uri, array $params = array()) {
-    // Make sure we're allowed to make a request first
-    if (!PhabricatorEnv::getEnvConfig('security.allow-outbound-http')) {
-      throw new Exception('Outbound HTTP requests are disabled!');
-    }
-
-    $uri = new PhutilURI($uri);
-
-    $protocol = $uri->getProtocol();
-    switch ($protocol) {
-      case 'http':
-      case 'https':
-        break;
-      default:
-        // Make sure we are not accessing any file:// URIs or similar.
-        return null;
-    }
-
     $timeout = 5;
 
-    list($file_data) = id(new HTTPSFuture($uri))
-        ->setTimeout($timeout)
-        ->resolvex();
+    $redirects = array();
+    $current = $uri;
+    while (true) {
+      try {
+        if (count($redirects) > 10) {
+          throw new Exception(
+            pht('Too many redirects trying to fetch remote URI.'));
+        }
 
-    $params = $params + array(
-      'name' => basename($uri),
-    );
+        PhabricatorEnv::requireValidRemoteURIForFetch(
+          $current,
+          array(
+            'http',
+            'https',
+          ));
 
-    return self::newFromFileData($file_data, $params);
+        list($status, $body, $headers) = id(new HTTPSFuture($current))
+          ->setFollowLocation(false)
+          ->setTimeout($timeout)
+          ->resolve();
+
+        if ($status->isRedirect()) {
+          // This is an HTTP 3XX status, so look for a "Location" header.
+          $location = null;
+          foreach ($headers as $header) {
+            list($name, $value) = $header;
+            if (phutil_utf8_strtolower($name) == 'location') {
+              $location = $value;
+              break;
+            }
+          }
+
+          // HTTP 3XX status with no "Location" header, just treat this like
+          // a normal HTTP error.
+          if ($location === null) {
+            throw $status;
+          }
+
+          if (isset($redirects[$location])) {
+            throw new Exception(
+              pht(
+                'Encountered loop while following redirects.'));
+          }
+
+          $redirects[$location] = $location;
+          $current = $location;
+          // We'll fall off the bottom and go try this URI now.
+        } else if ($status->isError()) {
+          // This is something other than an HTTP 2XX or HTTP 3XX status, so
+          // just bail out.
+          throw $status;
+        } else {
+          // This is HTTP 2XX, so use the the response body to save the
+          // file data.
+          $params = $params + array(
+            'name' => basename($uri),
+          );
+
+          return self::newFromFileData($body, $params);
+        }
+      } catch (Exception $ex) {
+        if ($redirects) {
+          throw new PhutilProxyException(
+            pht(
+              'Failed to fetch remote URI "%s" after following %s redirect(s) '.
+              '(%s): %s',
+              $uri,
+              new PhutilNumber(count($redirects)),
+              implode(' > ', array_keys($redirects)),
+              $ex->getMessage()),
+            $ex);
+        } else {
+          throw $ex;
+        }
+      }
+    }
   }
 
   public static function normalizeFileName($file_name) {
@@ -552,6 +646,20 @@ final class PhabricatorFile extends PhabricatorFileDAO
     return $data;
   }
 
+
+  /**
+   * Return an iterable which emits file content bytes.
+   *
+   * @param int Offset for the start of data.
+   * @param int Offset for the end of data.
+   * @return Iterable Iterable object which emits requested data.
+   */
+  public function getFileDataIterator($begin = null, $end = null) {
+    $engine = $this->instantiateStorageEngine();
+    return $engine->getFileDataIterator($this, $begin, $end);
+  }
+
+
   public function getViewURI() {
     if (!$this->getPHID()) {
       throw new Exception(
@@ -585,9 +693,16 @@ final class PhabricatorFile extends PhabricatorFileDAO
     }
     $parts[] = $name;
 
-    $path = implode('/', $parts);
+    $path = '/'.implode('/', $parts);
 
-    return PhabricatorEnv::getCDNURI($path);
+    // If this file is only partially uploaded, we're just going to return a
+    // local URI to make sure that Ajax works, since the page is inevitably
+    // going to give us an error back.
+    if ($this->getIsPartial()) {
+      return PhabricatorEnv::getURI($path);
+    } else {
+      return PhabricatorEnv::getCDNURI($path);
+    }
   }
 
   /**

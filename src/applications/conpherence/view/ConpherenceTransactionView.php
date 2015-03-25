@@ -79,7 +79,8 @@ final class ConpherenceTransactionView extends AphrontView {
     $author = $handles[$transaction->getAuthorPHID()];
     $transaction_view = id(new PhabricatorTransactionView())
       ->setUser($user)
-      ->setEpoch($transaction->getDateCreated());
+      ->setEpoch($transaction->getDateCreated())
+      ->setTimeOnly(true);
     if ($this->getShowContentSource()) {
       $transaction_view->setContentSource($transaction->getContentSource());
     }
@@ -88,16 +89,17 @@ final class ConpherenceTransactionView extends AphrontView {
     $content_class = null;
     $content = null;
     switch ($transaction->getTransactionType()) {
-      case ConpherenceTransactionType::TYPE_TITLE:
-        $content = $transaction->getTitle();
-        $transaction_view->addClass('conpherence-edited');
-        break;
       case ConpherenceTransactionType::TYPE_FILES:
         $content = $transaction->getTitle();
         break;
+      case ConpherenceTransactionType::TYPE_TITLE:
       case ConpherenceTransactionType::TYPE_PARTICIPANTS:
+      case PhabricatorTransactions::TYPE_VIEW_POLICY:
+      case PhabricatorTransactions::TYPE_EDIT_POLICY:
+      case PhabricatorTransactions::TYPE_JOIN_POLICY:
         $content = $transaction->getTitle();
         $transaction_view->addClass('conpherence-edited');
+        $transaction_view->addClass('grouped');
         break;
       case PhabricatorTransactions::TYPE_COMMENT:
         $comment = $transaction->getComment();
@@ -141,7 +143,8 @@ final class ConpherenceTransactionView extends AphrontView {
     $handles = $conpherence->getHandles();
     $rendered_transactions = array();
     $engine = id(new PhabricatorMarkupEngine())
-      ->setViewer($user);
+      ->setViewer($user)
+      ->setContextObject($conpherence);
     foreach ($transactions as $key => $transaction) {
       if ($transaction->shouldHide()) {
         unset($transactions[$key]);

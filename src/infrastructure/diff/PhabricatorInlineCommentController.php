@@ -6,6 +6,8 @@ abstract class PhabricatorInlineCommentController
   abstract protected function createComment();
   abstract protected function loadComment($id);
   abstract protected function loadCommentForEdit($id);
+  abstract protected function loadCommentForDone($id);
+  abstract protected function loadCommentByPHID($phid);
   abstract protected function deleteComment(
     PhabricatorInlineCommentInterface $inline);
   abstract protected function saveComment(
@@ -20,6 +22,7 @@ abstract class PhabricatorInlineCommentController
   private $operation;
   private $commentID;
   private $renderer;
+  private $replyToCommentPHID;
 
   public function getCommentID() {
     return $this->commentID;
@@ -62,38 +65,80 @@ abstract class PhabricatorInlineCommentController
     return $this->renderer;
   }
 
+  public function setReplyToCommentPHID($phid) {
+    $this->replyToCommentPHID = $phid;
+    return $this;
+  }
+
+  public function getReplyToCommentPHID() {
+    return $this->replyToCommentPHID;
+  }
+
   public function processRequest() {
     $request = $this->getRequest();
     $user = $request->getUser();
 
     $this->readRequestParameters();
 
-    switch ($this->getOperation()) {
-      case 'delete':
-        $inline = $this->loadCommentForEdit($this->getCommentID());
+    $op = $this->getOperation();
+    switch ($op) {
+      case 'done':
+        if (!$request->validateCSRF()) {
+          return new Aphront404Response();
+        }
+        $inline = $this->loadCommentForDone($this->getCommentID());
 
-        if ($request->isFormPost()) {
-          $this->deleteComment($inline);
-          return $this->buildEmptyResponse();
+        switch ($inline->getFixedState()) {
+          case PhabricatorInlineCommentInterface::STATE_DRAFT:
+            $next_state = PhabricatorInlineCommentInterface::STATE_UNDONE;
+            break;
+          case PhabricatorInlineCommentInterface::STATE_UNDRAFT:
+            $next_state = PhabricatorInlineCommentInterface::STATE_DONE;
+            break;
+          case PhabricatorInlineCommentInterface::STATE_DONE:
+            $next_state = PhabricatorInlineCommentInterface::STATE_UNDRAFT;
+            break;
+          default:
+          case PhabricatorInlineCommentInterface::STATE_UNDONE:
+            $next_state = PhabricatorInlineCommentInterface::STATE_DRAFT;
+            break;
         }
 
-        $dialog = new AphrontDialogView();
-        $dialog->setUser($user);
-        $dialog->setSubmitURI($request->getRequestURI());
+        $inline->setFixedState($next_state)->save();
 
-        $dialog->setTitle(pht('Really delete this comment?'));
-        $dialog->addHiddenInput('id', $this->getCommentID());
-        $dialog->addHiddenInput('op', 'delete');
-        $dialog->appendChild(
-          phutil_tag('p', array(), pht('Delete this inline comment?')));
+        return $this->buildEmptyResponse();
+      case 'delete':
+      case 'undelete':
+      case 'refdelete':
+        if (!$request->validateCSRF()) {
+          return new Aphront404Response();
+        }
 
-        $dialog->addCancelButton('#');
-        $dialog->addSubmitButton(pht('Delete'));
+        // NOTE: For normal deletes, we just process the delete immediately
+        // and show an "Undo" action. For deletes by reference from the
+        // preview ("refdelete"), we prompt first (because the "Undo" may
+        // not draw, or may not be easy to locate).
 
-        return id(new AphrontDialogResponse())->setDialog($dialog);
+        if ($op == 'refdelete') {
+          if (!$request->isFormPost()) {
+            return $this->newDialog()
+              ->setTitle(pht('Really delete comment?'))
+              ->addHiddenInput('id', $this->getCommentID())
+              ->addHiddenInput('op', $op)
+              ->appendParagraph(pht('Delete this inline comment?'))
+              ->addCancelButton('#')
+              ->addSubmitButton(pht('Delete'));
+          }
+        }
+
+        $is_delete = ($op == 'delete' || $op == 'refdelete');
+
+        $inline = $this->loadCommentForEdit($this->getCommentID());
+        $inline->setIsDeleted((int)$is_delete)->save();
+
+        return $this->buildEmptyResponse();
       case 'edit':
         $inline = $this->loadCommentForEdit($this->getCommentID());
-
         $text = $this->getCommentText();
 
         if ($request->isFormPost()) {
@@ -119,8 +164,10 @@ abstract class PhabricatorInlineCommentController
           $this->renderTextArea(
             nonempty($text, $inline->getContent())));
 
+        $view = $this->buildScaffoldForView($edit_dialog);
+
         return id(new AphrontAjaxResponse())
-          ->setContent($edit_dialog->render());
+          ->setContent($view->render());
       case 'create':
         $text = $this->getCommentText();
 
@@ -135,6 +182,11 @@ abstract class PhabricatorInlineCommentController
           ->setLineLength($this->getLineLength())
           ->setIsNewFile($this->getIsNewFile())
           ->setContent($text);
+
+        if ($this->getReplyToCommentPHID()) {
+          $inline->setReplyToCommentPHID($this->getReplyToCommentPHID());
+        }
+
         $this->saveComment($inline);
 
         return $this->buildRenderedCommentResponse(
@@ -161,17 +213,17 @@ abstract class PhabricatorInlineCommentController
         }
 
         $edit_dialog->addHiddenInput('op', 'create');
-        $edit_dialog->addHiddenInput('changeset', $changeset);
         $edit_dialog->addHiddenInput('is_new', $is_new);
         $edit_dialog->addHiddenInput('number', $number);
         $edit_dialog->addHiddenInput('length', $length);
-        $edit_dialog->addHiddenInput('renderer', $this->getRenderer());
 
         $text_area = $this->renderTextArea($this->getCommentText());
         $edit_dialog->appendChild($text_area);
 
+        $view = $this->buildScaffoldForView($edit_dialog);
+
         return id(new AphrontAjaxResponse())
-          ->setContent($edit_dialog->render());
+          ->setContent($view->render());
     }
   }
 
@@ -180,7 +232,7 @@ abstract class PhabricatorInlineCommentController
 
     // NOTE: This isn't necessarily a DifferentialChangeset ID, just an
     // application identifier for the changeset. In Diffusion, it's a Path ID.
-    $this->changesetID = $request->getInt('changeset');
+    $this->changesetID = $request->getInt('changesetID');
 
     $this->isNewFile = (int)$request->getBool('is_new');
     $this->isOnRight = $request->getBool('on_right');
@@ -190,19 +242,41 @@ abstract class PhabricatorInlineCommentController
     $this->commentID = $request->getInt('id');
     $this->operation = $request->getStr('op');
     $this->renderer = $request->getStr('renderer');
+    $this->replyToCommentPHID = $request->getStr('replyToCommentPHID');
+
+    if ($this->getReplyToCommentPHID()) {
+      $reply_phid = $this->getReplyToCommentPHID();
+      $reply_comment = $this->loadCommentByPHID($reply_phid);
+      if (!$reply_comment) {
+        throw new Exception(
+          pht('Failed to load comment "%s".', $reply_phid));
+      }
+
+      if ($reply_comment->getChangesetID() != $this->getChangesetID()) {
+        throw new Exception(
+          pht(
+            'Comment "%s" belongs to wrong changeset (%s vs %s).',
+            $reply_phid,
+            $reply_comment->getChangesetID(),
+            $this->getChangesetID()));
+      }
+    }
   }
 
   private function buildEditDialog() {
     $request = $this->getRequest();
     $user = $request->getUser();
 
-    $edit_dialog = id(new DifferentialInlineCommentEditView())
+    $edit_dialog = id(new PHUIDiffInlineCommentEditView())
       ->setUser($user)
       ->setSubmitURI($request->getRequestURI())
-      ->setOnRight($this->getIsOnRight())
+      ->setIsOnRight($this->getIsOnRight())
+      ->setIsNewFile($this->getIsNewFile())
       ->setNumber($this->getLineNumber())
       ->setLength($this->getLineLength())
-      ->setRenderer($this->getRenderer());
+      ->setRenderer($this->getRenderer())
+      ->setReplyToCommentPHID($this->getReplyToCommentPHID())
+      ->setChangesetID($this->getChangesetID());
 
     return $edit_dialog;
   }
@@ -233,14 +307,15 @@ abstract class PhabricatorInlineCommentController
 
     $handles = $this->loadViewerHandles($phids);
 
-    $view = id(new DifferentialInlineCommentView())
+    $view = id(new PHUIDiffInlineCommentDetailView())
       ->setInlineComment($inline)
-      ->setOnRight($on_right)
-      ->setBuildScaffolding(true)
+      ->setIsOnRight($on_right)
       ->setMarkupEngine($engine)
       ->setHandles($handles)
       ->setEditable(true)
-      ->setRenderer($this->getRenderer());
+      ->setCanMarkDone(false);
+
+    $view = $this->buildScaffoldForView($view);
 
     return id(new AphrontAjaxResponse())
       ->setContent(
@@ -257,6 +332,16 @@ abstract class PhabricatorInlineCommentController
       ->setName('text')
       ->setValue($text)
       ->setDisableFullScreen(true);
+  }
+
+  private function buildScaffoldForView(PHUIDiffInlineCommentView $view) {
+    $renderer = DifferentialChangesetHTMLRenderer::getHTMLRendererByKey(
+      $this->getRenderer());
+
+    $view = $renderer->getRowScaffoldForInline($view);
+
+    return id(new PHUIDiffInlineCommentTableScaffold())
+      ->addRowScaffold($view);
   }
 
 }

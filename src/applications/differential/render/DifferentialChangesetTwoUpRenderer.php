@@ -264,39 +264,33 @@ final class DifferentialChangesetTwoUpRenderer
 
       if ($o_num && isset($old_comments[$o_num])) {
         foreach ($old_comments[$o_num] as $comment) {
-          $comment_html = $this->renderInlineComment($comment,
-                                                     $on_right = false);
-          $new = '';
+          $inline = $this->buildInlineComment(
+            $comment,
+            $on_right = false);
+          $scaffold = $this->getRowScaffoldForInline($inline);
+
           if ($n_num && isset($new_comments[$n_num])) {
             foreach ($new_comments[$n_num] as $key => $new_comment) {
               if ($comment->isCompatible($new_comment)) {
-                $new = $this->renderInlineComment($new_comment,
-                                                  $on_right = true);
+                $companion = $this->buildInlineComment(
+                  $new_comment,
+                  $on_right = true);
+
+                $scaffold->addInlineView($companion);
                 unset($new_comments[$n_num][$key]);
               }
             }
           }
-          $html[] = phutil_tag('tr', array('class' => 'inline'), array(
-            phutil_tag('th', array()),
-            phutil_tag('td', array(), $comment_html),
-            phutil_tag('th', array()),
-            phutil_tag('td', array('colspan' => 3), $new),
-          ));
+
+          $html[] = $scaffold;
         }
       }
       if ($n_num && isset($new_comments[$n_num])) {
         foreach ($new_comments[$n_num] as $comment) {
-          $comment_html = $this->renderInlineComment($comment,
-                                                     $on_right = true);
-          $html[] = phutil_tag('tr', array('class' => 'inline'), array(
-            phutil_tag('th', array()),
-            phutil_tag('td', array()),
-            phutil_tag('th', array()),
-            phutil_tag(
-              'td',
-              array('colspan' => 3),
-              $comment_html),
-          ));
+          $inline = $this->buildInlineComment(
+            $comment,
+            $on_right = true);
+          $html[] = $this->getRowScaffoldForInline($inline);
         }
       }
     }
@@ -310,57 +304,30 @@ final class DifferentialChangesetTwoUpRenderer
                                    $vs = 0) {
     $old = null;
     if ($old_file) {
-      $old = phutil_tag(
-        'div',
-        array(
-          'class' => 'differential-image-stage',
-        ),
-        phutil_tag(
-          'img',
-          array(
-            'src' => $old_file->getBestURI(),
-          )));
+      $old = $this->renderImageStage($old_file);
     }
 
     $new = null;
     if ($new_file) {
-      $new = phutil_tag(
-        'div',
-        array(
-          'class' => 'differential-image-stage',
-        ),
-        phutil_tag(
-          'img',
-          array(
-            'src' => $new_file->getBestURI(),
-          )));
+      $new = $this->renderImageStage($new_file);
     }
 
     $html_old = array();
     $html_new = array();
     foreach ($this->getOldComments() as $on_line => $comment_group) {
       foreach ($comment_group as $comment) {
-        $comment_html = $this->renderInlineComment($comment, $on_right = false);
-        $html_old[] = phutil_tag('tr', array('class' => 'inline'), array(
-          phutil_tag('th', array()),
-          phutil_tag('td', array(), $comment_html),
-          phutil_tag('th', array()),
-          phutil_tag('td', array('colspan' => 3)),
-        ));
+        $inline = $this->buildInlineComment(
+          $comment,
+          $on_right = false);
+        $html_old[] = $this->getRowScaffoldForInline($inline);
       }
     }
     foreach ($this->getNewComments() as $lin_line => $comment_group) {
       foreach ($comment_group as $comment) {
-        $comment_html = $this->renderInlineComment($comment, $on_right = true);
-        $html_new[] = phutil_tag('tr', array('class' => 'inline'), array(
-          phutil_tag('th', array()),
-          phutil_tag('td', array()),
-          phutil_tag('th', array()),
-          phutil_tag(
-            'td',
-            array('colspan' => 3),
-            $comment_html),
-        ));
+        $inline = $this->buildInlineComment(
+          $comment,
+          $on_right = true);
+        $html_new[] = $this->getRowScaffoldForInline($inline);
       }
     }
 
@@ -395,6 +362,11 @@ final class DifferentialChangesetTwoUpRenderer
     $output = $this->wrapChangeInTable($output);
 
     return $this->renderChangesetTable($output);
+  }
+
+  public function getRowScaffoldForInline(PHUIDiffInlineCommentView $view) {
+    return id(new PHUIDiffTwoUpInlineCommentRowScaffold())
+      ->addInlineView($view);
   }
 
 }

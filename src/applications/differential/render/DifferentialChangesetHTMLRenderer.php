@@ -3,7 +3,20 @@
 abstract class DifferentialChangesetHTMLRenderer
   extends DifferentialChangesetRenderer {
 
+  public static function getHTMLRendererByKey($key) {
+    switch ($key) {
+      case '1up':
+        return new DifferentialChangesetOneUpRenderer();
+      case '2up':
+      default:
+        return new DifferentialChangesetTwoUpRenderer();
+    }
+    throw new Exception(pht('Unknown HTML renderer "%s"!', $key));
+  }
+
   abstract protected function getRendererTableClass();
+  abstract public function getRowScaffoldForInline(
+    PHUIDiffInlineCommentView $view);
 
   protected function renderChangeTypeHeader($force) {
     $changeset = $this->getChangeset();
@@ -229,6 +242,16 @@ abstract class DifferentialChangesetHTMLRenderer
         break;
     }
 
+    return $this->formatHeaderMessages($messages);
+  }
+
+  protected function renderUndershieldHeader() {
+    $messages = array();
+
+    $changeset = $this->getChangeset();
+
+    $file = $changeset->getFileType();
+
     // If this is a text file with at least one hunk, we may have converted
     // the text encoding. In this case, show a note.
     $show_encoding = ($file == DifferentialChangeType::FILE_TEXT) &&
@@ -248,6 +271,17 @@ abstract class DifferentialChangesetHTMLRenderer
       }
     }
 
+    if ($this->getHighlightingDisabled()) {
+      $messages[] = pht(
+        'This file is larger than %s, so syntax highlighting is '.
+        'disabled by default.',
+        phutil_format_bytes(DifferentialChangesetParser::HIGHLIGHT_BYTE_LIMIT));
+    }
+
+    return $this->formatHeaderMessages($messages);
+  }
+
+  private function formatHeaderMessages(array $messages) {
     if (!$messages) {
       return null;
     }
@@ -412,13 +446,6 @@ abstract class DifferentialChangesetHTMLRenderer
       ));
   }
 
-  protected function renderInlineComment(
-    PhabricatorInlineCommentInterface $comment,
-    $on_right = false) {
-
-    return $this->buildInlineComment($comment, $on_right)->render();
-  }
-
   protected function buildInlineComment(
     PhabricatorInlineCommentInterface $comment,
     $on_right = false) {
@@ -429,14 +456,16 @@ abstract class DifferentialChangesetHTMLRenderer
             ($comment->isDraft())
             && $this->getShowEditAndReplyLinks();
     $allow_reply = (bool)$user && $this->getShowEditAndReplyLinks();
+    $allow_done = !$comment->isDraft() && $this->getCanMarkDone();
 
-    return id(new DifferentialInlineCommentView())
+    return id(new PHUIDiffInlineCommentDetailView())
       ->setInlineComment($comment)
-      ->setOnRight($on_right)
+      ->setIsOnRight($on_right)
       ->setHandles($this->getHandles())
       ->setMarkupEngine($this->getMarkupEngine())
       ->setEditable($edit)
-      ->setAllowReply($allow_reply);
+      ->setAllowReply($allow_reply)
+      ->setCanMarkDone($allow_done);
   }
 
 
@@ -567,6 +596,19 @@ abstract class DifferentialChangesetHTMLRenderer
     }
 
     return array($left_prefix, $right_prefix);
+  }
+
+  protected function renderImageStage(PhabricatorFile $file) {
+    return phutil_tag(
+      'div',
+      array(
+        'class' => 'differential-image-stage',
+      ),
+      phutil_tag(
+        'img',
+        array(
+          'src' => $file->getBestURI(),
+        )));
   }
 
 }

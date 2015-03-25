@@ -20,10 +20,7 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
     $message,
     PhabricatorContentSource $source) {
 
-    $conpherence = id(new ConpherenceThread())
-      ->attachParticipants(array())
-      ->attachFilePHIDs(array())
-      ->setMessageCount(0);
+    $conpherence = ConpherenceThread::initializeNewThread($creator);
     $files = array();
     $errors = array();
     if (empty($participant_phids)) {
@@ -64,6 +61,7 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
           ->setTransactionType(ConpherenceTransactionType::TYPE_TITLE)
           ->setNewValue($title);
       }
+
       $xactions[] = id(new ConpherenceTransaction())
         ->setTransactionType(PhabricatorTransactions::TYPE_COMMENT)
         ->attachComment(
@@ -76,7 +74,6 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
         ->setContinueOnNoEffect(true)
         ->setActor($creator)
         ->applyTransactions($conpherence, $xactions);
-
     }
 
     return array($errors, $conpherence);
@@ -125,6 +122,9 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
     $types[] = ConpherenceTransactionType::TYPE_TITLE;
     $types[] = ConpherenceTransactionType::TYPE_PARTICIPANTS;
     $types[] = ConpherenceTransactionType::TYPE_FILES;
+    $types[] = PhabricatorTransactions::TYPE_VIEW_POLICY;
+    $types[] = PhabricatorTransactions::TYPE_EDIT_POLICY;
+    $types[] = PhabricatorTransactions::TYPE_JOIN_POLICY;
 
     return $types;
   }
@@ -321,6 +321,15 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
     PhabricatorLiskDAO $object,
     array $xactions) {
 
+    $message_count = 0;
+    foreach ($xactions as $xaction) {
+      switch ($xaction->getTransactionType()) {
+        case PhabricatorTransactions::TYPE_COMMENT:
+          $message_count++;
+          break;
+      }
+    }
+
     // update everyone's participation status on the last xaction -only-
     $xaction = end($xactions);
     $xaction_phid = $xaction->getPHID();
@@ -333,8 +342,8 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
       if ($phid != $user->getPHID()) {
         if ($participant->getParticipationStatus() != $behind) {
           $participant->setBehindTransactionPHID($xaction_phid);
-          // decrement one as this is the message putting them behind!
-          $participant->setSeenMessageCount($object->getMessageCount() - 1);
+          $participant->setSeenMessageCount(
+            $object->getMessageCount() - $message_count);
         }
         $participant->setParticipationStatus($behind);
         $participant->setDateTouched($time);
@@ -358,6 +367,51 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
     }
 
     return $xactions;
+  }
+
+  protected function requireCapabilities(
+    PhabricatorLiskDAO $object,
+    PhabricatorApplicationTransaction $xaction) {
+
+    parent::requireCapabilities($object, $xaction);
+
+    switch ($xaction->getTransactionType()) {
+      case ConpherenceTransactionType::TYPE_PARTICIPANTS:
+        $old_map = array_fuse($xaction->getOldValue());
+        $new_map = array_fuse($xaction->getNewValue());
+
+        $add = array_keys(array_diff_key($new_map, $old_map));
+        $rem = array_keys(array_diff_key($old_map, $new_map));
+
+        $actor_phid = $this->requireActor()->getPHID();
+
+        $is_join = (($add === array($actor_phid)) && !$rem);
+        $is_leave = (($rem === array($actor_phid)) && !$add);
+
+        if ($is_join) {
+          // You need CAN_JOIN to join a thread / room.
+          PhabricatorPolicyFilter::requireCapability(
+            $this->requireActor(),
+            $object,
+            PhabricatorPolicyCapability::CAN_JOIN);
+        } else if ($is_leave) {
+          // You don't need any capabilities to leave a conpherence thread.
+        } else {
+          // You need CAN_EDIT to change participants other than yourself.
+          PhabricatorPolicyFilter::requireCapability(
+            $this->requireActor(),
+            $object,
+            PhabricatorPolicyCapability::CAN_EDIT);
+        }
+        break;
+      case ConpherenceTransactionType::TYPE_FILES:
+      case ConpherenceTransactionType::TYPE_TITLE:
+        PhabricatorPolicyFilter::requireCapability(
+          $this->requireActor(),
+          $object,
+          PhabricatorPolicyCapability::CAN_EDIT);
+        break;
+    }
   }
 
   protected function mergeTransactions(
@@ -486,6 +540,30 @@ final class ConpherenceEditor extends PhabricatorApplicationTransactionEditor {
     $errors = parent::validateTransaction($object, $type, $xactions);
 
     switch ($type) {
+      case ConpherenceTransactionType::TYPE_TITLE:
+        if (!$object->getIsRoom()) {
+          continue;
+        }
+        $missing = $this->validateIsEmptyTextField(
+          $object->getTitle(),
+          $xactions);
+
+        if ($missing) {
+          if ($object->getIsRoom()) {
+            $detail = pht('Room title is required.');
+          } else {
+            $detail = pht('Thread title can not be blank.');
+          }
+          $error = new PhabricatorApplicationTransactionValidationError(
+            $type,
+            pht('Required'),
+            $detail,
+            last($xactions));
+
+          $error->setIsMissingFieldError(true);
+          $errors[] = $error;
+        }
+        break;
       case ConpherenceTransactionType::TYPE_PARTICIPANTS:
         foreach ($xactions as $xaction) {
           $phids = $this->getPHIDTransactionNewValue(
