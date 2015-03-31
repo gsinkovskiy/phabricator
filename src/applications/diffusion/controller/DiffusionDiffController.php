@@ -101,6 +101,7 @@ final class DiffusionDiffController extends DiffusionController {
     $parser->setCanMarkDone(
       ($commit->getAuthorPHID()) &&
       ($viewer->getPHID() == $commit->getAuthorPHID()));
+    $parser->setObjectOwnerPHID($commit->getAuthorPHID());
 
     $parser->setWhitespaceMode($whitespace);
 
