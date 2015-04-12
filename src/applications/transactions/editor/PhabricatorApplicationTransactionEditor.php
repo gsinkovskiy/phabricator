@@ -1967,8 +1967,15 @@ abstract class PhabricatorApplicationTransactionEditor
       return;
     }
 
-    $email_to = array_filter(array_unique($this->getMailTo($object)));
-    $email_cc = array_filter(array_unique($this->getMailCC($object)));
+    $email_force = array();
+    $email_to = $this->getMailTo($object);
+    $email_cc = $this->getMailCC($object);
+
+    $adapter = $this->getHeraldAdapter();
+    if ($adapter) {
+      $email_cc = array_merge($email_cc, $adapter->getEmailPHIDs());
+      $email_force = $adapter->getForcedEmailPHIDs();
+    }
 
     $phids = array_merge($email_to, $email_cc);
     $handles = id(new PhabricatorHandleQuery())
@@ -1983,10 +1990,6 @@ abstract class PhabricatorApplicationTransactionEditor
     $action = $this->getMailAction($object, $xactions);
 
     $reply_handler = $this->buildReplyHandler($object);
-    $reply_section = $reply_handler->getReplyHandlerInstructions();
-    if ($reply_section !== null) {
-      $body->addReplySection($reply_section);
-    }
 
     $body->addEmailPreferenceSection();
 
@@ -1997,6 +2000,7 @@ abstract class PhabricatorApplicationTransactionEditor
       ->setThreadID($this->getMailThreadID($object), $this->getIsNewObject())
       ->setRelatedPHID($object->getPHID())
       ->setExcludeMailRecipientPHIDs($this->getExcludeMailRecipientPHIDs())
+      ->setForceHeraldMailRecipientPHIDs($email_force)
       ->setMailTags($mail_tags)
       ->setIsBulk(true)
       ->setBody($body->render())

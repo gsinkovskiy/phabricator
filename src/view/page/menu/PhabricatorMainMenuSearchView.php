@@ -56,6 +56,13 @@ final class PhabricatorMainMenuSearchView extends AphrontView {
         'value' => 'true',
       ));
 
+    $search_text = javelin_tag(
+      'span',
+      array(
+        'aural' => true,
+      ),
+      pht('Search'));
+
     $form = phabricator_form(
       $user,
       array(
@@ -68,9 +75,9 @@ final class PhabricatorMainMenuSearchView extends AphrontView {
           'button',
           array(
             'id' => $button_id,
-            'class' => 'phui-icon-view phui-font-fa fa-search lightgreytext',
+            'class' => 'phui-icon-view phui-font-fa fa-search',
             ),
-          pht('Search')),
+          $search_text),
         $primary_input,
         $target,
       )));

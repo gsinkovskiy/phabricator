@@ -749,7 +749,7 @@ final class DiffusionCommitController extends DiffusionController {
           ->setName('action')
           ->setID('audit-action')
           ->setOptions($actions))
-      ->appendChild(
+      ->appendControl(
         id(new AphrontFormTokenizerControl())
           ->setLabel(pht('Add Auditors'))
           ->setName('auditors')
@@ -757,7 +757,7 @@ final class DiffusionCommitController extends DiffusionController {
           ->setControlStyle('display: none')
           ->setID('add-auditors-tokenizer')
           ->setDisableBehavior(true))
-      ->appendChild(
+      ->appendControl(
         id(new AphrontFormTokenizerControl())
           ->setLabel(pht('Add CCs'))
           ->setName('ccs')
