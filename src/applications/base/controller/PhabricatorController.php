@@ -57,6 +57,10 @@ abstract class PhabricatorController extends AphrontController {
     return false;
   }
 
+  public function isGlobalDragAndDropUploadEnabled() {
+    return false;
+  }
+
   public function willBeginExecution() {
     $request = $this->getRequest();
 
@@ -559,7 +563,6 @@ abstract class PhabricatorController extends AphrontController {
       ->setViewer($viewer)
       ->withObjectPHIDs(array($object->getPHID()))
       ->needComments(true)
-      ->setReversePaging(false)
       ->executeWithCursorPager($pager);
     $xactions = array_reverse($xactions);
 

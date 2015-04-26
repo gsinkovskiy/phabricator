@@ -40,11 +40,15 @@ final class DifferentialRevisionSearchEngine
 
     $saved->setParameter(
       'subscriberPHIDs',
-      $this->readUsersFromRequest($request, 'subscribers'));
+      $this->readSubscribersFromRequest($request, 'subscribers'));
 
     $saved->setParameter(
       'repositoryPHIDs',
       $request->getArr('repositories'));
+
+    $saved->setParameter(
+      'projects',
+      $this->readProjectsFromRequest($request, 'projects'));
 
     $saved->setParameter(
       'draft',
@@ -68,10 +72,16 @@ final class DifferentialRevisionSearchEngine
       ->needActiveDiffs(true)
       ->needRelationships(true);
 
+    $datasource = id(new PhabricatorPeopleUserFunctionDatasource())
+      ->setViewer($this->requireViewer());
+
     $responsible_phids = $saved->getParameter('responsiblePHIDs', array());
+    $responsible_phids = $datasource->evaluateTokens($responsible_phids);
     if ($responsible_phids) {
       $query->withResponsibleUsers($responsible_phids);
     }
+
+    $this->setQueryProjects($query, $saved);
 
     $author_phids = $saved->getParameter('authorPHIDs', array());
     if ($author_phids) {
@@ -124,13 +134,14 @@ final class DifferentialRevisionSearchEngine
     $subscriber_phids = $saved->getParameter('subscriberPHIDs', array());
     $repository_phids = $saved->getParameter('repositoryPHIDs', array());
     $only_draft = $saved->getParameter('draft', false);
+    $projects = $saved->getParameter('projects', array());
 
     $form
       ->appendControl(
         id(new AphrontFormTokenizerControl())
           ->setLabel(pht('Responsible Users'))
           ->setName('responsibles')
-          ->setDatasource(new PhabricatorPeopleDatasource())
+          ->setDatasource(new PhabricatorPeopleUserFunctionDatasource())
           ->setValue($responsible_phids))
       ->appendControl(
         id(new AphrontFormTokenizerControl())
@@ -156,6 +167,12 @@ final class DifferentialRevisionSearchEngine
           ->setName('repositories')
           ->setDatasource(new DiffusionRepositoryDatasource())
           ->setValue($repository_phids))
+      ->appendControl(
+        id(new AphrontFormTokenizerControl())
+          ->setLabel(pht('Projects'))
+          ->setName('projects')
+          ->setDatasource(new PhabricatorProjectLogicalDatasource())
+          ->setValue($projects))
       ->appendChild(
         id(new AphrontFormSelectControl())
           ->setLabel(pht('Status'))
