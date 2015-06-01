@@ -43,7 +43,7 @@ final class PhabricatorHelpApplication extends PhabricatorApplication {
       array(
         'bubbleID' => $help_id,
         'dropdownID' => 'phabricator-help-menu',
-        'applicationClass' => 'PhabricatorHelpApplication',
+        'applicationClass' => __CLASS__,
         'local' => true,
         'desktop' => true,
         'right' => true,
@@ -79,21 +79,19 @@ final class PhabricatorHelpApplication extends PhabricatorApplication {
     PhabricatorUser $viewer,
     PhabricatorController $controller = null) {
 
-    if (!$controller) {
-      return null;
-    }
-
-    $application = $controller->getCurrentApplication();
-    if (!$application) {
-      return null;
+    $application = null;
+    if ($controller) {
+      $application = $controller->getCurrentApplication();
     }
 
     $view = null;
-    $help_items = $application->getHelpMenuItems($viewer);
-    if ($help_items) {
-      $view = new PHUIListView();
-      foreach ($help_items as $item) {
-        $view->addMenuItem($item);
+    if ($application) {
+      $help_items = $application->getHelpMenuItems($viewer);
+      if ($help_items) {
+        $view = new PHUIListView();
+        foreach ($help_items as $item) {
+          $view->addMenuItem($item);
+        }
       }
     }
 

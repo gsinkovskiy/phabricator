@@ -18,6 +18,10 @@ final class PHUIDiffInlineCommentDetailView
     return $this;
   }
 
+  public function isHidden() {
+    return $this->inlineComment->isHidden();
+  }
+
   public function setHandles(array $handles) {
     assert_instances_of($handles, 'PhabricatorObjectHandle');
     $this->handles = $handles;
@@ -71,8 +75,23 @@ final class PHUIDiffInlineCommentDetailView
     return $this->objectOwnerPHID;
   }
 
-  public function render() {
+  public function getAnchorName() {
+    $inline = $this->inlineComment;
+    if ($inline->getID()) {
+      return 'inline-'.$inline->getID();
+    }
+    return null;
+  }
 
+  public function getScaffoldCellID() {
+    $anchor = $this->getAnchorName();
+    if ($anchor) {
+      return 'anchor-'.$anchor;
+    }
+    return null;
+  }
+
+  public function render() {
     require_celerity_resource('phui-inline-comment-view-css');
     $inline = $this->inlineComment;
 
@@ -124,25 +143,32 @@ final class PHUIDiffInlineCommentDetailView
 
     $ghost_tag = null;
     $ghost = $inline->getIsGhost();
+    $ghost_id = null;
     if ($ghost) {
       if ($ghost['new']) {
-        $ghost_text = pht('Newer Comment');
+        $ghosticon = 'fa-fast-forward';
+        $reason = pht('View on forward revision');
       } else {
-        $ghost_text = pht('Older Comment');
+        $ghosticon = 'fa-fast-backward';
+        $reason = pht('View on previous revision');
       }
 
-      $ghost_tag = id(new PHUITagView())
-        ->setType(PHUITagView::TYPE_SHADE)
-        ->setName($ghost_text)
-        ->setSlimShady(true)
-        ->setShade(PHUITagView::COLOR_BLUE)
+      $ghost_icon = id(new PHUIIconView())
+        ->setIconFont($ghosticon)
         ->addSigil('has-tooltip')
         ->setMetadata(
           array(
-            'tip' => $ghost['reason'],
+            'tip' => $reason,
             'size' => 300,
-          ))
-        ->addClass('mml');
+          ));
+      $ghost_tag = phutil_tag(
+        'a',
+        array(
+          'class' => 'ghost-icon',
+          'href' => $ghost['href'],
+          'target' => '_blank',
+        ),
+        $ghost_icon);
       $classes[] = 'inline-comment-ghost';
     }
 
@@ -170,6 +196,8 @@ final class PHUIDiffInlineCommentDetailView
     if (!$this->preview) {
       $nextprev = new PHUIButtonBarView();
       $nextprev->addClass('mml');
+
+
       $up = id(new PHUIButtonView())
         ->setTag('a')
         ->setColor(PHUIButtonView::SIMPLE)
@@ -185,6 +213,18 @@ final class PHUIDiffInlineCommentDetailView
         ->setIconFont('fa-chevron-down')
         ->addSigil('differential-inline-next')
         ->setMustCapture(true);
+
+      $hide = id(new PHUIButtonView())
+        ->setTag('a')
+        ->setColor(PHUIButtonView::SIMPLE)
+        ->setTooltip(pht('Hide Comment'))
+        ->setIconFont('fa-times')
+        ->addSigil('hide-inline')
+        ->setMustCapture(true);
+
+      if ($viewer_phid && $inline->getID() && $inline->supportsHiding()) {
+        $nextprev->addButton($hide);
+      }
 
       $nextprev->addButton($up);
       $nextprev->addButton($down);
@@ -211,7 +251,7 @@ final class PHUIDiffInlineCommentDetailView
       }
     }
 
-    $anchor_name = 'inline-'.$inline->getID();
+    $anchor_name = $this->getAnchorName();
 
     if ($this->editable && !$this->preview) {
       $edit_button = id(new PHUIButtonView())
@@ -236,7 +276,7 @@ final class PHUIDiffInlineCommentDetailView
       $links[] = javelin_tag(
         'a',
         array(
-          'class' => 'button simple',
+          'class' => 'button simple msl',
           'meta'        => array(
             'anchor' => $anchor_name,
           ),
@@ -311,18 +351,24 @@ final class PHUIDiffInlineCommentDetailView
             pht('Done'),
           ));
       } else {
-        $done_button = id(new PHUIButtonView())
-          ->setTag('a')
-          ->setColor(PHUIButtonView::SIMPLE)
-          ->addClass('mml');
         if ($is_done) {
-          $done_button->setIconFont('fa-check');
-          $done_button->setText(pht('Done'));
-          $done_button->addClass('button-done');
+          $icon = id(new PHUIIconView())->setIconFont('fa-check sky msr');
+          $label = pht('Done');
+          $class = 'button-done';
         } else {
-          $done_button->addClass('button-not-done');
-          $done_button->setText(pht('Not Done'));
+          $icon = null;
+          $label = pht('Not Done');
+          $class = 'button-not-done';
         }
+        $done_button = phutil_tag(
+          'div',
+          array(
+            'class' => 'done-label '.$class,
+          ),
+          array(
+            $icon,
+            $label,
+          ));
       }
     }
 
@@ -385,10 +431,10 @@ final class PHUIDiffInlineCommentDetailView
       ),
       array(
         $anchor,
-        $links,
-        $nextprev,
-        $action_buttons,
         $done_button,
+        $links,
+        $action_buttons,
+        $nextprev,
       ));
 
     $markup = javelin_tag(

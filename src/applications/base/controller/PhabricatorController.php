@@ -3,6 +3,7 @@
 abstract class PhabricatorController extends AphrontController {
 
   private $handles;
+  private $extraQuicksandConfig = array();
 
   public function shouldRequireLogin() {
     return true;
@@ -59,6 +60,15 @@ abstract class PhabricatorController extends AphrontController {
 
   public function isGlobalDragAndDropUploadEnabled() {
     return false;
+  }
+
+  public function addExtraQuicksandConfig($config) {
+    $this->extraQuicksandConfig += $config;
+    return $this;
+  }
+
+  private function getExtraQuicksandConfig() {
+    return $this->extraQuicksandConfig;
   }
 
   public function willBeginExecution() {
@@ -294,7 +304,8 @@ abstract class PhabricatorController extends AphrontController {
   private function buildPageResponse($page) {
     if ($this->getRequest()->isQuicksand()) {
       $response = id(new AphrontAjaxResponse())
-        ->setContent($page->renderForQuicksand());
+        ->setContent($page->renderForQuicksand(
+          $this->getExtraQuicksandConfig()));
     } else {
       $response = id(new AphrontWebpageResponse())
         ->setContent($page->render());
@@ -305,7 +316,7 @@ abstract class PhabricatorController extends AphrontController {
 
   public function getApplicationURI($path = '') {
     if (!$this->getCurrentApplication()) {
-      throw new Exception('No application!');
+      throw new Exception(pht('No application!'));
     }
     return $this->getCurrentApplication()->getApplicationURI($path);
   }
@@ -377,8 +388,8 @@ abstract class PhabricatorController extends AphrontController {
       if (isset($seen[$hash])) {
         $seen[] = get_class($response);
         throw new Exception(
-          'Cycle while reducing proxy responses: '.
-          implode(' -> ', $seen));
+          pht('Cycle while reducing proxy responses: %s',
+          implode(' -> ', $seen)));
       }
       $seen[$hash] = get_class($response);
 
