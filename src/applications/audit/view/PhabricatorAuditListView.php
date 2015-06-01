@@ -183,7 +183,6 @@ final class PhabricatorAuditListView extends AphrontView {
         $status_text = null;
         $status_color = null;
       }
-      $author_name = $commit->getCommitData()->getAuthorName();
 
       $item = id(new PHUIObjectItemView())
         ->setUser($user)
@@ -260,7 +259,7 @@ final class PhabricatorAuditListView extends AphrontView {
         $author_name = $commit->getCommitData()->getAuthorName();
       }
 
-      $item->setSubHead(pht('Author: %s', $author_name));
+      $item->addByLine(pht('Author: %s', $author_name));
 
       $auditors = idx($this->commitAuditorsHTML, $commit_phid, array());
       if (!empty($auditors)) {
