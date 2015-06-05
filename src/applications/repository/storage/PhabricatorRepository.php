@@ -320,10 +320,15 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       return $parent_svn_revision;
     }
 
-    list($xml) = $this->execxRemoteCommand(
+    list($err, $xml, $stderr) = $this->execRemoteCommand(
       'log %s --xml --revision %d:1 --limit 1',
       $this->getSubversionBaseURI(),
       $parent_svn_revision);
+
+    if ($err) {
+      // Happens, when using 1st commit on a sub-path.
+      return $parent_svn_revision;
+    }
 
     $log = new SimpleXMLElement($xml);
 
