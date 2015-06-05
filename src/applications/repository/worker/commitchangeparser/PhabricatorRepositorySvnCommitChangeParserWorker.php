@@ -41,6 +41,7 @@ final class PhabricatorRepositorySvnCommitChangeParserWorker
     }
 
     $raw_paths = array();
+    $better_revisions = array();
     foreach ($entry->paths->path as $path) {
       $name = trim((string)$path);
       $raw_paths[$name] = array(
@@ -54,12 +55,14 @@ final class PhabricatorRepositorySvnCommitChangeParserWorker
       // because SVN reports last revision per whole SVN repository, not
       // sub-path, that is used in Diffusion.
       if ($raw_paths[$name]['rawTargetCommit']) {
-        $better_revision = $repository->getSubversionParentCommit(
-          $raw_paths[$name]['rawTargetCommit'] + 1);
-
-        if ($better_revision) {
-          $raw_paths[$name]['rawTargetCommit'] = $better_revision;
+        $path_revision = $raw_paths[$name]['rawTargetCommit'];
+        if (!isset($better_revisions[$path_revision])) {
+          $better_revisions[$path_revision] =
+            $repository->getSubversionParentCommit(
+              $raw_paths[$name]['rawTargetCommit'] + 1);
         }
+
+        $raw_paths[$name]['rawTargetCommit'] = $better_revisions[$path_revision];
       }
     }
 
