@@ -1038,6 +1038,27 @@ final class DiffusionCommitController extends DiffusionController {
       ->setIcon('fa-download');
     $actions->addAction($action);
 
+    $watch_audit_status = array(
+      PhabricatorAuditCommitStatusConstants::CONCERN_RAISED,
+      PhabricatorAuditCommitStatusConstants::PARTIALLY_AUDITED,
+    );
+
+    if (in_array($commit->getAuditStatus(), $watch_audit_status)) {
+      Javelin::initBehavior('diffusion-copy-fix-message');
+
+      list(, $commit_message) = $commit->parseCommitMessage();
+      $commit_id = $repository->getMonogram().$commit->getCommitIdentifier();
+      $fix_message = '[fixes: '.$commit_id.'] '.$commit_message;
+
+      $action = id(new PhabricatorActionView())
+        ->setName(pht('Copy Fix Message'))
+        ->setHref('#')
+        ->addSigil('copy-fix-message')
+        ->setMetadata(array('fix-message' => $fix_message))
+        ->setIcon('fa-medkit');
+      $actions->addAction($action);
+    }
+
     return $actions;
   }
 
