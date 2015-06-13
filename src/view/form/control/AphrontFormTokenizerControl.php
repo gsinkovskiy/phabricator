@@ -38,6 +38,11 @@ final class AphrontFormTokenizerControl extends AphrontFormControl {
     $this->loadHandles();
   }
 
+  public function readValueFromRequest(AphrontRequest $request) {
+    $this->setValue($request->getArr($this->getName()));
+    return $this;
+  }
+
   protected function renderInput() {
     $name = $this->getName();
 
