@@ -29,7 +29,7 @@ abstract class PhabricatorApplication implements PhabricatorPolicyInterface {
 
 /* -(  Application Information  )-------------------------------------------- */
 
-  public abstract function getName();
+  abstract public function getName();
 
   public function getShortDescription() {
     return pht('%s Application', $this->getName());
@@ -580,6 +580,11 @@ abstract class PhabricatorApplication implements PhabricatorPolicyInterface {
         $spec = $this->getCustomCapabilitySpecification($capability);
         return idx($spec, 'caption');
     }
+  }
+
+  public function getCapabilityTemplatePHIDType($capability) {
+    $spec = $this->getCustomCapabilitySpecification($capability);
+    return idx($spec, 'template');
   }
 
   public function getApplicationSearchDocumentTypes() {

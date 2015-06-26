@@ -373,7 +373,6 @@ final class PhabricatorCalendarEventSearchEngine
       $event->setDescription(pht('%s (%s)', $name_text, $status_text));
       $event->setName($status_text);
       $event->setURI($status->getURI());
-      // $event->setEventID($status->getID());
       $event->setViewerIsInvited($viewer_is_invited);
       $month_view->addEvent($event);
     }
@@ -463,7 +462,11 @@ final class PhabricatorCalendarEventSearchEngine
   }
 
   public function getPageSize(PhabricatorSavedQuery $saved) {
-    return $saved->getParameter('limit', 1000);
+    if ($this->isMonthView($saved) || $this->isDayView($saved)) {
+      return $saved->getParameter('limit', 1000);
+    } else {
+      return $saved->getParameter('limit', 100);
+    }
   }
 
   private function getDateFrom(PhabricatorSavedQuery $saved) {

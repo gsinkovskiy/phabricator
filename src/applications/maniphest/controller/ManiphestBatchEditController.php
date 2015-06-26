@@ -25,6 +25,12 @@ final class ManiphestBatchEditController extends ManiphestController {
       $task_ids = $request->getStrList('batch');
     }
 
+    if (!$task_ids) {
+      throw new Exception(
+        pht(
+          'No tasks are selected.'));
+    }
+
     $tasks = id(new ManiphestTaskQuery())
       ->setViewer($viewer)
       ->withIDs($task_ids)
@@ -36,6 +42,12 @@ final class ManiphestBatchEditController extends ManiphestController {
       ->needSubscriberPHIDs(true)
       ->needProjectPHIDs(true)
       ->execute();
+
+    if (!$tasks) {
+      throw new Exception(
+        pht(
+          "You don't have permission to edit any of the selected tasks."));
+    }
 
     if ($project) {
       $cancel_uri = '/project/board/'.$project->getID().'/';
@@ -88,6 +100,8 @@ final class ManiphestBatchEditController extends ManiphestController {
     $mailable_source->setViewer($viewer);
     $owner_source = new ManiphestAssigneeDatasource();
     $owner_source->setViewer($viewer);
+    $spaces_source = id(new PhabricatorSpacesNamespaceDatasource())
+      ->setViewer($viewer);
 
     require_celerity_resource('maniphest-batch-editor');
     Javelin::initBehavior(
@@ -111,6 +125,12 @@ final class ManiphestBatchEditController extends ManiphestController {
             'src' => $mailable_source->getDatasourceURI(),
             'placeholder' => $mailable_source->getPlaceholderText(),
             'browseURI' => $mailable_source->getBrowseURI(),
+          ),
+          'spaces' => array(
+            'src' => $spaces_source->getDatasourceURI(),
+            'placeholder' => $spaces_source->getPlaceholderText(),
+            'browseURI' => $spaces_source->getBrowseURI(),
+            'limit' => 1,
           ),
         ),
         'input' => 'batch-form-actions',
@@ -201,6 +221,7 @@ final class ManiphestBatchEditController extends ManiphestController {
       'remove_project'  => PhabricatorTransactions::TYPE_EDGE,
       'add_ccs'         => PhabricatorTransactions::TYPE_SUBSCRIBERS,
       'remove_ccs'      => PhabricatorTransactions::TYPE_SUBSCRIBERS,
+      'space' => PhabricatorTransactions::TYPE_SPACE,
     );
 
     $edge_edit_types = array(
@@ -246,6 +267,10 @@ final class ManiphestBatchEditController extends ManiphestController {
           case PhabricatorTransactions::TYPE_SUBSCRIBERS:
             $current = $task->getSubscriberPHIDs();
             break;
+          case PhabricatorTransactions::TYPE_SPACE:
+            $current = PhabricatorSpacesNamespaceQuery::getObjectSpacePHID(
+              $task);
+            break;
         }
       }
 
@@ -259,6 +284,12 @@ final class ManiphestBatchEditController extends ManiphestController {
           if (!strlen($value)) {
             continue 2;
           }
+          break;
+        case PhabricatorTransactions::TYPE_SPACE:
+          if (empty($value)) {
+            continue 2;
+          }
+          $value = head($value);
           break;
         case ManiphestTransaction::TYPE_OWNER:
           if (empty($value)) {

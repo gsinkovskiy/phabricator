@@ -27,16 +27,38 @@ final class PhabricatorCalendarEventViewController
       return new Aphront404Response();
     }
 
-    if ($sequence && $event->getIsRecurring()) {
-      $event = $event->generateNthGhost($sequence, $viewer);
-    } else if ($sequence) {
-      return new Aphront404Response();
-    }
+    if ($sequence) {
+      $result = $this->getEventAtIndexForGhostPHID(
+        $viewer,
+        $event->getPHID(),
+        $sequence);
 
-    $title = 'E'.$event->getID();
-    $page_title = $title.' '.$event->getName();
-    $crumbs = $this->buildApplicationCrumbs();
-    $crumbs->addTextCrumb($title, '/E'.$event->getID());
+      if ($result) {
+        $parent_event = $event;
+        $event = $result;
+        $event->attachParentEvent($parent_event);
+        return id(new AphrontRedirectResponse())
+          ->setURI('/E'.$result->getID());
+      } else if ($sequence && $event->getIsRecurring()) {
+        $parent_event = $event;
+        $event = $event->generateNthGhost($sequence, $viewer);
+        $event->attachParentEvent($parent_event);
+      } else if ($sequence) {
+        return new Aphront404Response();
+      }
+
+      $title = $event->getMonogram().' ('.$sequence.')';
+      $page_title = $title.' '.$event->getName();
+      $crumbs = $this->buildApplicationCrumbs();
+      $crumbs->addTextCrumb($title, '/'.$event->getMonogram().'/'.$sequence);
+
+
+    } else {
+      $title = 'E'.$event->getID();
+      $page_title = $title.' '.$event->getName();
+      $crumbs = $this->buildApplicationCrumbs();
+      $crumbs->addTextCrumb($title, '/E'.$event->getID());
+    }
 
     $timeline = $this->buildTransactionTimeline(
       $event,
@@ -135,24 +157,27 @@ final class PhabricatorCalendarEventViewController
       $event,
       PhabricatorPolicyCapability::CAN_EDIT);
 
-    if ($event->getIsRecurring() && $event->getIsGhostEvent()) {
-      $index = $event->getSequenceIndex();
+    $edit_label = false;
+    $edit_uri = false;
 
-      $actions->addAction(
-        id(new PhabricatorActionView())
-          ->setName(pht('Edit This Instance'))
-          ->setIcon('fa-pencil')
-          ->setHref($this->getApplicationURI("event/edit/{$id}/{$index}/"))
-          ->setDisabled(!$can_edit)
-          ->setWorkflow(!$can_edit));
+    if ($event->getIsGhostEvent()) {
+      $index = $event->getSequenceIndex();
+      $edit_label = pht('Edit This Instance');
+      $edit_uri = "event/edit/{$id}/{$index}/";
+    } else if ($event->getIsRecurrenceException()) {
+      $edit_label = pht('Edit This Instance');
+      $edit_uri = "event/edit/{$id}/";
+    } else {
+      $edit_label = pht('Edit');
+      $edit_uri = "event/edit/{$id}/";
     }
 
-    if (!$event->getIsRecurring() && !$event->getIsGhostEvent()) {
+    if ($edit_label && $edit_uri) {
       $actions->addAction(
         id(new PhabricatorActionView())
-          ->setName(pht('Edit Event'))
+          ->setName($edit_label)
           ->setIcon('fa-pencil')
-          ->setHref($this->getApplicationURI("event/edit/{$id}/"))
+          ->setHref($this->getApplicationURI($edit_uri))
           ->setDisabled(!$can_edit)
           ->setWorkflow(!$can_edit));
     }
@@ -173,21 +198,46 @@ final class PhabricatorCalendarEventViewController
           ->setWorkflow(true));
     }
 
+    $cancel_uri = $this->getApplicationURI("event/cancel/{$id}/");
+
+    if ($event->getIsGhostEvent()) {
+      $index = $event->getSequenceIndex();
+      $can_reinstate = $event->getIsParentCancelled();
+
+      $cancel_label = pht('Cancel This Instance');
+      $reinstate_label = pht('Reinstate This Instance');
+      $cancel_disabled = (!$can_edit || $can_reinstate);
+      $cancel_uri = $this->getApplicationURI("event/cancel/{$id}/{$index}/");
+    } else if ($event->getIsRecurrenceException()) {
+      $can_reinstate = $event->getIsParentCancelled();
+      $cancel_label = pht('Cancel This Instance');
+      $reinstate_label = pht('Reinstate This Instance');
+      $cancel_disabled = (!$can_edit || $can_reinstate);
+    } else if ($event->getIsRecurrenceParent()) {
+      $cancel_label = pht('Cancel Recurrence');
+      $reinstate_label = pht('Reinstate Recurrence');
+      $cancel_disabled = !$can_edit;
+    } else {
+      $cancel_label = pht('Cancel Event');
+      $reinstate_label = pht('Reinstate Event');
+      $cancel_disabled = !$can_edit;
+    }
+
     if ($is_cancelled) {
       $actions->addAction(
         id(new PhabricatorActionView())
-          ->setName(pht('Reinstate Event'))
+          ->setName($reinstate_label)
           ->setIcon('fa-plus')
-          ->setHref($this->getApplicationURI("event/cancel/{$id}/"))
-          ->setDisabled(!$can_edit)
+          ->setHref($cancel_uri)
+          ->setDisabled($cancel_disabled)
           ->setWorkflow(true));
     } else {
       $actions->addAction(
         id(new PhabricatorActionView())
-          ->setName(pht('Cancel Event'))
+          ->setName($cancel_label)
           ->setIcon('fa-times')
-          ->setHref($this->getApplicationURI("event/cancel/{$id}/"))
-          ->setDisabled(!$can_edit)
+          ->setHref($cancel_uri)
+          ->setDisabled($cancel_disabled)
           ->setWorkflow(true));
     }
 
@@ -231,6 +281,13 @@ final class PhabricatorCalendarEventViewController
       $properties->addProperty(
         pht('Recurs'),
         ucwords(idx($event->getRecurrenceFrequency(), 'rule')));
+
+      if ($event->getRecurrenceEndDate()) {
+        $properties->addProperty(
+          pht('Recurrence Ends'),
+          phabricator_datetime($event->getRecurrenceEndDate(), $viewer));
+      }
+
       if ($event->getInstanceOfEventPHID()) {
         $properties->addProperty(
           pht('Recurrence of Event'),
