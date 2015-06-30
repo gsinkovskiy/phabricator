@@ -279,7 +279,7 @@ final class DiffusionCommitQuery
 
     if ($this->needDrafts) {
       $drafts = id(new PhabricatorAuditTransactionComment())->loadAllWhere(
-        'authorPHID = %s AND commitPHID IN (%Ls) AND transactionPHID IS NULL
+        'authorPHID = %s AND isDeleted = 0 AND commitPHID IN (%Ls) AND transactionPHID IS NULL
           AND pathID IS NOT NULL',
         $viewer->getPHID(),
         mpull($commits, 'getPHID'));
