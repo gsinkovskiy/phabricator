@@ -14,6 +14,7 @@ final class PhabricatorUser
     PhabricatorCustomFieldInterface,
     PhabricatorDestructibleInterface,
     PhabricatorSSHPublicKeyInterface,
+    PhabricatorFlaggableInterface,
     PhabricatorApplicationTransactionInterface {
 
   const SESSION_TABLE = 'phabricator_session';
@@ -54,6 +55,7 @@ final class PhabricatorUser
   private $preferences = null;
   private $omnipotent = false;
   private $customFields = self::ATTACHABLE;
+  private $badgePHIDs = self::ATTACHABLE;
 
   private $alternateCSRFString = self::ATTACHABLE;
   private $session = self::ATTACHABLE;
@@ -738,6 +740,41 @@ final class PhabricatorUser
     return new DateTimeZone($this->getTimezoneIdentifier());
   }
 
+  public function getPreference($key) {
+    $preferences = $this->loadPreferences();
+
+    // TODO: After T4103 and T7707 this should eventually be pushed down the
+    // stack into modular preference definitions and role profiles. This is
+    // just fixing T8601 and mildly anticipating those changes.
+    $value = $preferences->getPreference($key);
+
+    $allowed_values = null;
+    switch ($key) {
+      case PhabricatorUserPreferences::PREFERENCE_TIME_FORMAT:
+        $allowed_values = array(
+          'g:i A',
+          'H:i',
+        );
+        break;
+      case PhabricatorUserPreferences::PREFERENCE_DATE_FORMAT:
+        $allowed_values = array(
+          'Y-m-d',
+          'n/j/Y',
+          'd-m-Y',
+        );
+        break;
+    }
+
+    if ($allowed_values !== null) {
+      $allowed_values = array_fuse($allowed_values);
+      if (empty($allowed_values[$value])) {
+        $value = head($allowed_values);
+      }
+    }
+
+    return $value;
+  }
+
   public function __toString() {
     return $this->getUsername();
   }
@@ -1038,6 +1075,29 @@ final class PhabricatorUser
   }
 
 
+  /**
+   * Get a scalar string identifying this user.
+   *
+   * This is similar to using the PHID, but distinguishes between ominpotent
+   * and public users explicitly. This allows safe construction of cache keys
+   * or cache buckets which do not conflate public and omnipotent users.
+   *
+   * @return string Scalar identifier.
+   */
+  public function getCacheFragment() {
+    if ($this->isOmnipotent()) {
+      return 'u.omnipotent';
+    }
+
+    $phid = $this->getPHID();
+    if ($phid) {
+      return 'u.'.$phid;
+    }
+
+    return 'u.public';
+  }
+
+
 /* -(  Managing Handles  )--------------------------------------------------- */
 
 
@@ -1084,6 +1144,15 @@ final class PhabricatorUser
    */
   public function renderHandleList(array $phids) {
     return $this->loadHandles($phids)->renderList();
+  }
+
+  public function attachBadgePHIDs(array $phids) {
+    $this->badgePHIDs = $phids;
+    return $this;
+  }
+
+  public function getBadgePHIDs() {
+    return $this->assertAttached($this->badgePHIDs);
   }
 
 

@@ -177,19 +177,21 @@ final class PhabricatorAuditListView extends AphrontView {
           PhabricatorAuditStatusConstants::getStatusName($status_code);
         $status_color =
           PhabricatorAuditStatusConstants::getStatusColor($status_code);
+        $status_icon =
+          PhabricatorAuditStatusConstants::getStatusIcon($status_code);
       } else {
         $reasons = null;
         $status_code = null;
         $status_text = null;
         $status_color = null;
+        $status_icon = null;
       }
 
       $item = id(new PHUIObjectItemView())
         ->setUser($user)
         ->setObjectName($commit_name)
         ->setHeader($commit_desc)
-        ->setHref($commit_link)
-        ->setBarColor($status_color);
+        ->setHref($commit_link);
 
       // Add icon indicating, that this commit is a fix commit.
       if ($commit_prefix) {
@@ -231,10 +233,6 @@ final class PhabricatorAuditListView extends AphrontView {
         $item->addAttribute($draft_icon);
       }
 
-      $item
-        ->addAttribute($status_text)
-        ->addAttribute($reasons);
-
       if (idx($modification_dates, $commit_phid)) {
         $modified = $modification_dates[$commit_phid];
 
@@ -259,11 +257,17 @@ final class PhabricatorAuditListView extends AphrontView {
         $author_name = $commit->getCommitData()->getAuthorName();
       }
 
-      $item->addByLine(pht('Author: %s', $author_name));
+      $item->addAttribute(pht('Author: %s', $author_name));
+      $item->addAttribute($reasons);
 
       $auditors = idx($this->commitAuditorsHTML, $commit_phid, array());
       if (!empty($auditors)) {
-        $item->addAttribute(pht('Auditors: %s', $auditors));
+        $item->addByLine(pht('Auditors: %s', $auditors));
+      }
+
+      if ($status_color) {
+        $item->setStatusIcon(
+          $status_icon.' '.$status_color, $status_text);
       }
 
       $list->addItem($item);

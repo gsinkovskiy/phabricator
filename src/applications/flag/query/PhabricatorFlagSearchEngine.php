@@ -159,8 +159,8 @@ final class PhabricatorFlagSearchEngine
       }
 
       $object = $flag->getObject();
-      if ($object instanceof PhabricatorBarColorInterface) {
-        $item->setBarColor($object->getBarColor());
+      if ($object instanceof PhabricatorStatusIconInterface) {
+        $object->setStatusIcon($item);
       }
 
       $item->addAction(
@@ -186,7 +186,12 @@ final class PhabricatorFlagSearchEngine
       $list->addItem($item);
     }
 
-    return $list;
+    $result = new PhabricatorApplicationSearchResultView();
+    $result->setObjectList($list);
+    $result->setNoDataString(pht('No flags found.'));
+
+    return $result;
+
   }
 
 

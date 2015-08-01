@@ -199,6 +199,7 @@ final class PhabricatorDifferentialApplication extends PhabricatorApplication {
       DifferentialDefaultViewCapability::CAPABILITY => array(
         'caption' => pht('Default view policy for newly created revisions.'),
         'template' => DifferentialRevisionPHIDType::TYPECONST,
+        'capability' => PhabricatorPolicyCapability::CAN_VIEW,
       ),
     );
   }

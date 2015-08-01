@@ -265,6 +265,7 @@ final class DiffusionRepositoryEditMainController
 
     $view = id(new PHUIPropertyListView())
       ->setUser($viewer)
+      ->setObject($repository)
       ->setActionList($actions);
 
     $type = PhabricatorRepositoryType::getNameForRepositoryType(
@@ -272,7 +273,6 @@ final class DiffusionRepositoryEditMainController
 
     $view->addProperty(pht('Type'), $type);
     $view->addProperty(pht('Callsign'), $repository->getCallsign());
-
 
     $clone_name = $repository->getDetail('clone-name');
 
@@ -284,17 +284,7 @@ final class DiffusionRepositoryEditMainController
           : phutil_tag('em', array(), $repository->getCloneName().'/'));
     }
 
-    $project_phids = PhabricatorEdgeQuery::loadDestinationPHIDs(
-      $repository->getPHID(),
-      PhabricatorProjectObjectHasProjectEdgeType::EDGECONST);
-    if ($project_phids) {
-      $project_text = $viewer->renderHandleList($project_phids);
-    } else {
-      $project_text = phutil_tag('em', array(), pht('None'));
-    }
-    $view->addProperty(
-      pht('Projects'),
-      $project_text);
+    $view->invokeWillRenderEvent();
 
     $view->addProperty(
       pht('Status'),
@@ -387,9 +377,17 @@ final class DiffusionRepositoryEditMainController
       $viewer,
       $repository);
 
+    $view_parts = array();
+    if (PhabricatorSpacesNamespaceQuery::getViewerSpacesExist($viewer)) {
+      $space_phid = PhabricatorSpacesNamespaceQuery::getObjectSpacePHID(
+        $repository);
+      $view_parts[] = $viewer->renderHandle($space_phid);
+    }
+    $view_parts[] = $descriptions[PhabricatorPolicyCapability::CAN_VIEW];
+
     $view->addProperty(
       pht('Visible To'),
-      $descriptions[PhabricatorPolicyCapability::CAN_VIEW]);
+      phutil_implode_html(" \xC2\xB7 ", $view_parts));
 
     $view->addProperty(
       pht('Editable By'),

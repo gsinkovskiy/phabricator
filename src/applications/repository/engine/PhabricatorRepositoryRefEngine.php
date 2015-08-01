@@ -467,6 +467,8 @@ final class PhabricatorRepositoryRefEngine
         PhabricatorWorker::scheduleTask($class, $data);
       }
     }
+
+    return $this;
   }
 
 

@@ -171,11 +171,11 @@ final class DifferentialRevisionListView extends AphrontView {
       $item->addAttribute(pht('Reviewers: %s', $reviewers));
       $item->setEpoch($revision->getDateModified(), $object_age);
 
-      if ($status == ArcanistDifferentialRevisionStatus::CLOSED) {
+      if ($status == ArcanistDifferentialRevisionStatus::CLOSED || $status == ArcanistDifferentialRevisionStatus::ABANDONED) {
         $item->setDisabled(true);
       }
 
-      $item->setBarColor($revision->getBarColor());
+      $revision->setStatusIcon($item);
 
       $list->addItem($item);
     }
@@ -186,7 +186,7 @@ final class DifferentialRevisionListView extends AphrontView {
     if ($this->header && !$this->noBox) {
       $list->setFlush(true);
       $list = id(new PHUIObjectBoxView())
-        ->appendChild($list);
+        ->setObjectList($list);
 
       if ($this->header instanceof PHUIHeaderView) {
         $list->setHeader($this->header);

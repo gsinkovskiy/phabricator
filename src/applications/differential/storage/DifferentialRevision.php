@@ -6,7 +6,7 @@ final class DifferentialRevision extends DifferentialDAO
     PhabricatorPolicyInterface,
     PhabricatorExtendedPolicyInterface,
     PhabricatorFlaggableInterface,
-    PhabricatorBarColorInterface,
+    PhabricatorStatusIconInterface,
     PhrequentTrackableInterface,
     HarbormasterBuildableInterface,
     PhabricatorSubscribableInterface,
@@ -31,7 +31,6 @@ final class DifferentialRevision extends DifferentialDAO
 
   protected $mailKey;
   protected $branchName;
-  protected $arcanistProjectPHID;
   protected $repositoryPHID;
   protected $viewPolicy = PhabricatorPolicies::POLICY_USER;
   protected $editPolicy = PhabricatorPolicies::POLICY_USER;
@@ -88,7 +87,6 @@ final class DifferentialRevision extends DifferentialDAO
         'lineCount' => 'uint32?',
         'mailKey' => 'bytes40',
         'branchName' => 'text255?',
-        'arcanistProjectPHID' => 'phid?',
         'repositoryPHID' => 'phid?',
       ),
       self::CONFIG_KEY_SCHEMA => array(
@@ -102,6 +100,14 @@ final class DifferentialRevision extends DifferentialDAO
         ),
         'repositoryPHID' => array(
           'columns' => array('repositoryPHID'),
+        ),
+        // If you (or a project you are a member of) is reviewing a significant
+        // fraction of the revisions on an install, the result set of open
+        // revisions may be smaller than the result set of revisions where you
+        // are a reviewer. In these cases, this key is better than keys on the
+        // edge table.
+        'key_status' => array(
+          'columns' => array('status', 'phid'),
         ),
       ),
     ) + parent::getConfiguration();
@@ -624,25 +630,29 @@ final class DifferentialRevision extends DifferentialDAO
     $this->saveTransaction();
   }
 
-/* -(  PhabricatorBarColorInterface  )--------------------------------------- */
+/* -(  PhabricatorStatusIconInterface  )--------------------------------------- */
 
-  public function getBarColor() {
-    $status = $this->getStatus();
-
-    switch ($status) {
+  public function setStatusIcon(PHUIObjectItemView $item) {
+    switch ($this->getStatus()) {
+      case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
+        $item->setStatusIcon('fa-code grey', pht('Needs Review'));
+        break;
       case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
+        $item->setStatusIcon('fa-refresh red', pht('Needs Revision'));
+        break;
       case ArcanistDifferentialRevisionStatus::CHANGES_PLANNED:
-        return 'red';
+        $item->setStatusIcon('fa-headphones red', pht('Changes Planned'));
         break;
       case ArcanistDifferentialRevisionStatus::ACCEPTED:
-        return 'green';
+        $item->setStatusIcon('fa-check green', pht('Accepted'));
+        break;
+      case ArcanistDifferentialRevisionStatus::CLOSED:
+        $item->setStatusIcon('fa-check-square-o black', pht('Closed'));
         break;
       case ArcanistDifferentialRevisionStatus::ABANDONED:
-        return 'black';
+        $item->setStatusIcon('fa-plane black', pht('Abandoned'));
         break;
     }
-
-    return '';
   }
 
 }

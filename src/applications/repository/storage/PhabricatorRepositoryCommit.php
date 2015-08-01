@@ -5,7 +5,7 @@ final class PhabricatorRepositoryCommit
   implements
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
-    PhabricatorBarColorInterface,
+    PhabricatorStatusIconInterface,
     PhabricatorProjectInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorSubscribableInterface,
@@ -467,11 +467,18 @@ final class PhabricatorRepositoryCommit
     return $timeline->setPathMap($path_map);
   }
 
-/* -(  PhabricatorBarColorInterface  )--------------------------------------- */
+/* -(  PhabricatorStatusIconInterface  )--------------------------------------- */
 
-  public function getBarColor() {
-    return PhabricatorAuditCommitStatusConstants::getStatusColor(
-      $this->getAuditStatus());
+  public function setStatusIcon(PHUIObjectItemView $item) {
+    $status_code = $this->getAuditStatus();
+    $status_text =
+      PhabricatorAuditCommitStatusConstants::getStatusName($status_code);
+    $status_color =
+      PhabricatorAuditCommitStatusConstants::getStatusColor($status_code);
+    $status_icon =
+      PhabricatorAuditCommitStatusConstants::getStatusIcon($status_code);
+
+    $item->setStatusIcon($status_icon.' '.$status_color, $status_text);
   }
 
 }
