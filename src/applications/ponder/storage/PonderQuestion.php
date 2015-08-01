@@ -7,6 +7,7 @@ final class PonderQuestion extends PonderDAO
     PonderVotableInterface,
     PhabricatorSubscribableInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorPolicyInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorProjectInterface,
@@ -296,6 +297,14 @@ final class PonderQuestion extends PonderDAO
 
       $this->delete();
     $this->saveTransaction();
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

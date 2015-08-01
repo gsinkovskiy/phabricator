@@ -5,6 +5,7 @@ final class PhabricatorPaste extends PhabricatorPasteDAO
     PhabricatorSubscribableInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorMentionableInterface,
     PhabricatorPolicyInterface,
     PhabricatorProjectInterface,
@@ -219,6 +220,14 @@ final class PhabricatorPaste extends PhabricatorPasteDAO
 
   public function getSpacePHID() {
     return $this->spacePHID;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

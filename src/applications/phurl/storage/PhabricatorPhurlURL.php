@@ -9,6 +9,7 @@ final class PhabricatorPhurlURL extends PhabricatorPhurlDAO
   PhabricatorDestructibleInterface,
   PhabricatorMentionableInterface,
   PhabricatorFlaggableInterface,
+  PhabricatorAuthorAwareInterface,
   PhabricatorSpacesInterface {
 
   protected $name;
@@ -168,4 +169,13 @@ final class PhabricatorPhurlURL extends PhabricatorPhurlDAO
   public function getSpacePHID() {
     return $this->spacePHID;
   }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
+  }
+
 }

@@ -7,6 +7,7 @@ final class PholioMock extends PholioDAO
     PhabricatorSubscribableInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorProjectInterface,
     PhabricatorDestructibleInterface,
@@ -320,5 +321,12 @@ final class PholioMock extends PholioDAO
     return $this->spacePHID;
   }
 
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
+  }
 
 }

@@ -6,6 +6,7 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
     PhabricatorApplicationTransactionInterface,
     PhabricatorSubscribableInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorDestructibleInterface {
 
   protected $name;
@@ -191,6 +192,14 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
     $this->openTransaction();
       $this->delete();
     $this->saveTransaction();
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getCreatorPHID();
   }
 
 }

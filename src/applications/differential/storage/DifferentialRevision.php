@@ -6,6 +6,7 @@ final class DifferentialRevision extends DifferentialDAO
     PhabricatorPolicyInterface,
     PhabricatorExtendedPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorStatusIconInterface,
     PhrequentTrackableInterface,
     HarbormasterBuildableInterface,
@@ -653,6 +654,14 @@ final class DifferentialRevision extends DifferentialDAO
         $item->setStatusIcon('fa-plane black', pht('Abandoned'));
         break;
     }
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

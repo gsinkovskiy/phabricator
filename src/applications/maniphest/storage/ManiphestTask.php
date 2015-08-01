@@ -7,6 +7,7 @@ final class ManiphestTask extends ManiphestDAO
     PhabricatorPolicyInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorMentionableInterface,
     PhrequentTrackableInterface,
     PhabricatorCustomFieldInterface,
@@ -388,6 +389,14 @@ final class ManiphestTask extends ManiphestDAO
 
   public function getSpacePHID() {
     return $this->spacePHID;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

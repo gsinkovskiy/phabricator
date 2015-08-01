@@ -125,6 +125,19 @@ final class PhabricatorFlagSearchEngine
     return $options;
   }
 
+  protected function getRequiredHandlePHIDsForResultList(
+    array $objects,
+    PhabricatorSavedQuery $query) {
+    $phids = array();
+    foreach ($objects as $flag) {
+      $object = $flag->getObject();
+      if ($object instanceof PhabricatorAuthorAwareInterface) {
+        $phids[$object->getAuthor()] = 1;
+      }
+    }
+    return array_keys($phids);
+  }
+
   protected function renderResultList(
     array $flags,
     PhabricatorSavedQuery $query,
@@ -161,6 +174,11 @@ final class PhabricatorFlagSearchEngine
       $object = $flag->getObject();
       if ($object instanceof PhabricatorStatusIconInterface) {
         $object->setStatusIcon($item);
+      }
+
+      if ($object instanceof PhabricatorAuthorAwareInterface) {
+        $author_handle = $handles[$object->getAuthor()];
+        $item->addByline(pht('Author: %s', $author_handle->renderLink()));
       }
 
       $item->addAction(

@@ -23,6 +23,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
     PhabricatorTokenReceiverInterface,
     PhabricatorSubscribableInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorPolicyInterface,
     PhabricatorDestructibleInterface {
 
@@ -1385,6 +1386,14 @@ final class PhabricatorFile extends PhabricatorFileDAO
     $this->openTransaction();
       $this->delete();
     $this->saveTransaction();
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

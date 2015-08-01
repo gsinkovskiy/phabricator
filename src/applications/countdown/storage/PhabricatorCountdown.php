@@ -4,6 +4,7 @@ final class PhabricatorCountdown extends PhabricatorCountdownDAO
   implements
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorSubscribableInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorTokenReceiverInterface,
@@ -131,6 +132,14 @@ final class PhabricatorCountdown extends PhabricatorCountdownDAO
 
   public function getSpacePHID() {
     return $this->spacePHID;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

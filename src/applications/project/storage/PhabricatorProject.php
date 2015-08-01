@@ -4,6 +4,7 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   implements
     PhabricatorApplicationTransactionInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorPolicyInterface,
     PhabricatorSubscribableInterface,
     PhabricatorCustomFieldInterface,
@@ -409,6 +410,14 @@ final class PhabricatorProject extends PhabricatorProjectDAO
       }
 
     $this->saveTransaction();
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

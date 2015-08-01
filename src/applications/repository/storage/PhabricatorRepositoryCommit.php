@@ -5,6 +5,7 @@ final class PhabricatorRepositoryCommit
   implements
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorStatusIconInterface,
     PhabricatorProjectInterface,
     PhabricatorTokenReceiverInterface,
@@ -479,6 +480,14 @@ final class PhabricatorRepositoryCommit
       PhabricatorAuditCommitStatusConstants::getStatusIcon($status_code);
 
     $item->setStatusIcon($status_icon.' '.$status_color, $status_text);
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

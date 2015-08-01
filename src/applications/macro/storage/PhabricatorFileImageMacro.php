@@ -5,6 +5,7 @@ final class PhabricatorFileImageMacro extends PhabricatorFileDAO
     PhabricatorSubscribableInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorPolicyInterface {
 
   protected $authorPHID;
@@ -138,6 +139,14 @@ final class PhabricatorFileImageMacro extends PhabricatorFileDAO
 
   public function describeAutomaticCapability($capability) {
     return null;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

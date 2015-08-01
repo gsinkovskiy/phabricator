@@ -10,6 +10,7 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
   PhabricatorDestructibleInterface,
   PhabricatorMentionableInterface,
   PhabricatorFlaggableInterface,
+  PhabricatorAuthorAwareInterface,
   PhabricatorSpacesInterface {
 
   protected $name;
@@ -562,4 +563,13 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
   public function getSpacePHID() {
     return $this->spacePHID;
   }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getUserPHID();
+  }
+
 }

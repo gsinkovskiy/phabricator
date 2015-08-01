@@ -7,6 +7,7 @@ final class PonderAnswer extends PonderDAO
     PonderVotableInterface,
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorSubscribableInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorDestructibleInterface {
@@ -256,6 +257,14 @@ final class PonderAnswer extends PonderDAO
     $this->openTransaction();
       $this->delete();
     $this->saveTransaction();
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

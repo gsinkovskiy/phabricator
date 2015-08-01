@@ -5,6 +5,7 @@ final class PhamePost extends PhameDAO
     PhabricatorPolicyInterface,
     PhabricatorMarkupInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorProjectInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorSubscribableInterface,
@@ -304,6 +305,14 @@ final class PhamePost extends PhameDAO
 
   public function shouldAllowSubscription($phid) {
     return true;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getBloggerPHID();
   }
 
 }

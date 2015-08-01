@@ -6,6 +6,7 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
     PhabricatorPolicyInterface,
     PhabricatorSubscribableInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorProjectInterface,
     PhabricatorDestructibleInterface,
@@ -208,6 +209,14 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
 
   public function getSpacePHID() {
     return $this->spacePHID;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

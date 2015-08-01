@@ -6,6 +6,7 @@ final class PhameBlog extends PhameDAO
     PhabricatorMarkupInterface,
     PhabricatorSubscribableInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorProjectInterface,
     PhabricatorApplicationTransactionInterface {
 
@@ -346,5 +347,12 @@ final class PhameBlog extends PhameDAO
     return true;
   }
 
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getCreatorPHID();
+  }
 
 }
