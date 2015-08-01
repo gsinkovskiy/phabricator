@@ -91,9 +91,13 @@ final class DifferentialRevisionListView extends AphrontView {
       $flag = $revision->getFlag($user);
       if ($flag) {
         $flag_class = PhabricatorFlagColor::getCSSClass($flag->getColor());
-        $icons['flag'] = phutil_tag(
+        $icons['flag'] = javelin_tag(
           'div',
           array(
+            'sigil' => 'has-tooltip',
+            'meta' => array(
+              'tip' => $flag->getNote(),
+            ),
             'class' => 'phabricator-flag-icon '.$flag_class,
           ),
           '');

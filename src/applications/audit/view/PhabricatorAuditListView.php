@@ -219,9 +219,13 @@ final class PhabricatorAuditListView extends AphrontView {
       $flag = $commit->getFlag($user);
       if ($flag) {
         $flag_class = PhabricatorFlagColor::getCSSClass($flag->getColor());
-        $flag_icon = phutil_tag(
+        $flag_icon = javelin_tag(
           'div',
           array(
+            'sigil' => 'has-tooltip',
+            'meta' => array(
+              'tip' => $flag->getNote(),
+            ),
             'class' => 'phabricator-flag-icon '.$flag_class,
           ),
           '');
