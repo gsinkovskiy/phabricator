@@ -19,6 +19,7 @@ final class PonderAnswer extends PonderDAO
 
   protected $content;
   protected $contentSource;
+  protected $mailKey;
 
   protected $voteCount;
   private $vote;
@@ -72,6 +73,7 @@ final class PonderAnswer extends PonderDAO
       self::CONFIG_COLUMN_SCHEMA => array(
         'voteCount' => 'sint32',
         'content' => 'text',
+        'mailKey' => 'bytes20',
 
         // T6203/NULLABILITY
         // This should always exist.
@@ -112,6 +114,13 @@ final class PonderAnswer extends PonderDAO
 
   public function getMarkupField() {
     return self::MARKUP_FIELD_CONTENT;
+  }
+
+  public function save() {
+    if (!$this->getMailKey()) {
+      $this->setMailKey(Filesystem::readRandomCharacters(20));
+    }
+    return parent::save();
   }
 
 
