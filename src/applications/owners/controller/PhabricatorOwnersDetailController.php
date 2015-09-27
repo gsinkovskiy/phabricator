@@ -13,12 +13,14 @@ final class PhabricatorOwnersDetailController
     $package = id(new PhabricatorOwnersPackageQuery())
       ->setViewer($viewer)
       ->withIDs(array($request->getURIData('id')))
+      ->needPaths(true)
+      ->needOwners(true)
       ->executeOne();
     if (!$package) {
       return new Aphront404Response();
     }
 
-    $paths = $package->loadPaths();
+    $paths = $package->getPaths();
 
     $repository_phids = array();
     foreach ($paths as $path) {
@@ -35,13 +37,31 @@ final class PhabricatorOwnersDetailController
       $repositories = array();
     }
 
+    $field_list = PhabricatorCustomField::getObjectFields(
+      $package,
+      PhabricatorCustomField::ROLE_VIEW);
+    $field_list
+      ->setViewer($viewer)
+      ->readFieldsFromStorage($package);
+
     $actions = $this->buildPackageActionView($package);
-    $properties = $this->buildPackagePropertyView($package);
+    $properties = $this->buildPackagePropertyView($package, $field_list);
     $properties->setActionList($actions);
+
+    if ($package->isArchived()) {
+      $header_icon = 'fa-ban';
+      $header_name = pht('Archived');
+      $header_color = 'dark';
+    } else {
+      $header_icon = 'fa-check';
+      $header_name = pht('Active');
+      $header_color = 'bluegrey';
+    }
 
     $header = id(new PHUIHeaderView())
       ->setUser($viewer)
       ->setHeader($package->getName())
+      ->setStatus($header_icon, $header_color, $header_name)
       ->setPolicyObject($package);
 
     $panel = id(new PHUIObjectBoxView())
@@ -143,22 +163,16 @@ final class PhabricatorOwnersDetailController
   }
 
 
-  private function buildPackagePropertyView(PhabricatorOwnersPackage $package) {
+  private function buildPackagePropertyView(
+    PhabricatorOwnersPackage $package,
+    PhabricatorCustomFieldList $field_list) {
+
     $viewer = $this->getViewer();
 
     $view = id(new PHUIPropertyListView())
       ->setUser($viewer);
 
-    $primary_phid = $package->getPrimaryOwnerPHID();
-    if ($primary_phid) {
-      $primary_owner = $viewer->renderHandle($primary_phid);
-    } else {
-      $primary_owner = phutil_tag('em', array(), pht('None'));
-    }
-    $view->addProperty(pht('Primary Owner'), $primary_owner);
-
-    // TODO: needOwners() this on the Query.
-    $owners = $package->loadOwners();
+    $owners = $package->getOwners();
     if ($owners) {
       $owner_list = $viewer->renderHandleList(mpull($owners, 'getUserPHID'));
     } else {
@@ -175,13 +189,21 @@ final class PhabricatorOwnersDetailController
 
     $description = $package->getDescription();
     if (strlen($description)) {
-      $view->addSectionHeader(pht('Description'));
+      $view->addSectionHeader(
+        pht('Description'), PHUIPropertyListView::ICON_SUMMARY);
       $view->addTextContent(
         $output = PhabricatorMarkupEngine::renderOneObject(
           id(new PhabricatorMarkupOneOff())->setContent($description),
           'default',
           $viewer));
     }
+
+    $view->invokeWillRenderEvent();
+
+    $field_list->appendFieldsToPropertyList(
+      $package,
+      $viewer,
+      $view);
 
     return $view;
   }

@@ -75,7 +75,6 @@ final class DiffusionCommitController extends DiffusionController {
 
     $commit_data = $commit->getCommitData();
     $is_foreign = $commit_data->getCommitDetail('foreign-svn-stub');
-    $changesets = null;
     if ($is_foreign) {
       $subpath = $commit_data->getCommitDetail('svn-subpath');
 
@@ -181,24 +180,6 @@ final class DiffusionCommitController extends DiffusionController {
       $user,
       $this->auditAuthorityPHIDs);
 
-    $owners_paths = array();
-    if ($highlighted_audits) {
-      $packages = id(new PhabricatorOwnersPackage())->loadAllWhere(
-        'phid IN (%Ls)',
-        mpull($highlighted_audits, 'getAuditorPHID'));
-      if ($packages) {
-        $owners_paths = id(new PhabricatorOwnersPath())->loadAllWhere(
-          'repositoryPHID = %s AND packageID IN (%Ld)',
-          $repository->getPHID(),
-          mpull($packages, 'getID'));
-      }
-    }
-
-    $change_table = new DiffusionCommitChangeTableView();
-    $change_table->setDiffusionRequest($drequest);
-    $change_table->setPathChanges($changes);
-    $change_table->setOwnersPaths($owners_paths);
-
     $count = count($changes);
 
     $bad_commit = null;
@@ -210,6 +191,7 @@ final class DiffusionCommitController extends DiffusionController {
         'r'.$callsign.$commit->getCommitIdentifier());
     }
 
+    $show_changesets = false;
     if ($bad_commit) {
       $content[] = $this->renderStatusMessage(
         pht('Bad Commit'),
@@ -235,6 +217,8 @@ final class DiffusionCommitController extends DiffusionController {
           'Changes are not shown.',
           $hard_limit));
     } else {
+      $show_changesets = true;
+
       // The user has clicked "Show All Changes", and we should show all the
       // changes inline even if there are more than the soft limit.
       $show_all_details = $request->getBool('show_all');
@@ -269,6 +253,15 @@ final class DiffusionCommitController extends DiffusionController {
         $change_panel->setInfoView($warning_view);
         $header->addActionLink($button);
       }
+
+      $changesets = DiffusionPathChange::convertToDifferentialChangesets(
+        $user,
+        $changes);
+
+      // TODO: This table and panel shouldn't really be separate, but we need
+      // to clean up the "Load All Files" interaction first.
+      $change_table = $this->buildTableOfContents(
+        $changesets);
 
       $change_panel->setTable($change_table);
 
@@ -329,10 +322,6 @@ final class DiffusionCommitController extends DiffusionController {
       $change_panel->setHeader($header);
 
       $content[] = $change_panel;
-
-      $changesets = DiffusionPathChange::convertToDifferentialChangesets(
-        $user,
-        $changes);
 
       $vcs = $repository->getVersionControlSystem();
       switch ($vcs) {
@@ -415,12 +404,6 @@ final class DiffusionCommitController extends DiffusionController {
       $change_list->setInlineCommentControllerURI(
         '/diffusion/inline/edit/'.phutil_escape_uri($commit->getPHID()).'/');
 
-      $change_references = array();
-      foreach ($changesets as $key => $changeset) {
-        $change_references[$changeset->getID()] = $references[$key];
-      }
-      $change_table->setRenderingReferences($change_references);
-
       $content[] = $change_list->render();
     }
 
@@ -437,7 +420,7 @@ final class DiffusionCommitController extends DiffusionController {
     $show_filetree = $prefs->getPreference($pref_filetree);
     $collapsed = $prefs->getPreference($pref_collapse);
 
-    if ($changesets && $show_filetree) {
+    if ($show_changesets && $show_filetree) {
       $nav = id(new DifferentialChangesetFileTreeSideNavBuilder())
         ->setTitle($short_name)
         ->setBaseURI(new PhutilURI('/'.$commit_id))
@@ -935,6 +918,7 @@ final class DiffusionCommitController extends DiffusionController {
   }
 
   private function buildMergesTable(PhabricatorRepositoryCommit $commit) {
+    $viewer = $this->getViewer();
     $drequest = $this->getDiffusionRequest();
     $repository = $drequest->getRepository();
 
@@ -971,15 +955,12 @@ final class DiffusionCommitController extends DiffusionController {
           new PhutilNumber($limit)));
     }
 
-    $history_table = new DiffusionHistoryTableView();
-    $history_table->setUser($this->getRequest()->getUser());
-    $history_table->setDiffusionRequest($drequest);
-    $history_table->setHistory($merges);
-    $history_table->loadRevisions();
+    $history_table = id(new DiffusionHistoryTableView())
+      ->setUser($viewer)
+      ->setDiffusionRequest($drequest)
+      ->setHistory($merges);
 
-    $phids = $history_table->getRequiredHandlePHIDs();
-    $handles = $this->loadViewerHandles($phids);
-    $history_table->setHandles($handles);
+    $history_table->loadRevisions();
 
     $panel = new PHUIObjectBoxView();
     $panel->setHeaderText(pht('Merged Changes'));
@@ -1163,6 +1144,80 @@ final class DiffusionCommitController extends DiffusionController {
     }
 
     return $parser->processCorpus($corpus);
+  }
+
+  private function buildTableOfContents(array $changesets) {
+    $drequest = $this->getDiffusionRequest();
+    $viewer = $this->getViewer();
+
+    $toc_view = id(new PHUIDiffTableOfContentsListView())
+      ->setUser($viewer);
+
+    // TODO: This is hacky, we just want access to the linkX() methods on
+    // DiffusionView.
+    $diffusion_view = id(new DiffusionEmptyResultView())
+      ->setDiffusionRequest($drequest);
+
+    $have_owners = PhabricatorApplication::isClassInstalledForViewer(
+      'PhabricatorOwnersApplication',
+      $viewer);
+
+    if (!$changesets) {
+      $have_owners = false;
+    }
+
+    if ($have_owners) {
+      if ($viewer->getPHID()) {
+        $packages = id(new PhabricatorOwnersPackageQuery())
+          ->setViewer($viewer)
+          ->withStatuses(array(PhabricatorOwnersPackage::STATUS_ACTIVE))
+          ->withAuthorityPHIDs(array($viewer->getPHID()))
+          ->execute();
+        $toc_view->setAuthorityPackages($packages);
+      }
+
+      $repository = $drequest->getRepository();
+      $repository_phid = $repository->getPHID();
+
+      $control_query = id(new PhabricatorOwnersPackageQuery())
+        ->setViewer($viewer)
+        ->withStatuses(array(PhabricatorOwnersPackage::STATUS_ACTIVE))
+        ->withControl($repository_phid, mpull($changesets, 'getFilename'));
+      $control_query->execute();
+    }
+
+    foreach ($changesets as $changeset_id => $changeset) {
+      $path = $changeset->getFilename();
+      $anchor = substr(md5($path), 0, 8);
+
+      $history_link = $diffusion_view->linkHistory($path);
+      $browse_link = $diffusion_view->linkBrowse(
+        $path,
+        array(
+          'type' => $changeset->getFileType(),
+        ));
+
+      $item = id(new PHUIDiffTableOfContentsItemView())
+        ->setChangeset($changeset)
+        ->setAnchor($anchor)
+        ->setContext(
+          array(
+            $history_link,
+            ' ',
+            $browse_link,
+          ));
+
+      if ($have_owners) {
+        $packages = $control_query->getControllingPackagesForPath(
+          $repository_phid,
+          $changeset->getFilename());
+        $item->setPackages($packages);
+      }
+
+      $toc_view->addItem($item);
+    }
+
+    return $toc_view;
   }
 
 }

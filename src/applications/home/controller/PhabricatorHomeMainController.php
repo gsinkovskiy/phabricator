@@ -220,7 +220,7 @@ final class PhabricatorHomeMainController extends PhabricatorHomeController {
 
     $revisions = $revision_query->execute();
 
-    list($blocking, $active, ) = DifferentialRevisionQuery::splitResponsible(
+    list($blocking, $active,) = DifferentialRevisionQuery::splitResponsible(
         $revisions,
         array($user_phid));
 
@@ -350,9 +350,8 @@ final class PhabricatorHomeMainController extends PhabricatorHomeController {
 
     $query = id(new DiffusionCommitQuery())
       ->setViewer($user)
-      ->withAuditorPHIDs($phids)
+      ->withNeedsAuditByPHIDs($phids)
       ->withAuditStatus(DiffusionCommitQuery::AUDIT_STATUS_OPEN)
-      ->withAuditAwaitingUser($user)
       ->needAuditRequests(true)
       ->needCommitData(true)
       ->needFlags(true)

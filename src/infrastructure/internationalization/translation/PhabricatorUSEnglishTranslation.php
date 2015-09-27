@@ -33,6 +33,7 @@ final class PhabricatorUSEnglishTranslation
       '%d diff(s)' => array('%d diff', '%d diffs'),
 
       '%d Answer(s)' => array('%d Answer', '%d Answers'),
+      'Show %d Comment(s)' => array('Show %d Comment', 'Show %d Comments'),
 
       '%s DIFF LINK(S)' => array('DIFF LINK', 'DIFF LINKS'),
       'You successfully created %d diff(s).' => array(
@@ -385,10 +386,24 @@ final class PhabricatorUSEnglishTranslation
         ),
       ),
 
+      '%s added %s reviewer(s) for %s: %s.' => array(
+        array(
+          '%s added a reviewer for %3$s: %4$s.',
+          '%s added reviewers for %3$s: %4$s.',
+        ),
+      ),
+
       '%s removed %s reviewer(s): %s.' => array(
         array(
           '%s removed a reviewer: %3$s.',
           '%s removed reviewers: %3$s.',
+        ),
+      ),
+
+      '%s removed %s reviewer(s) for %s: %s.' => array(
+        array(
+          '%s removed a reviewer for %3$s: %4$s.',
+          '%s removed reviewers for %3$s: %4$s.',
         ),
       ),
 
@@ -611,6 +626,14 @@ final class PhabricatorUSEnglishTranslation
           '%s removed a dependency for %3$s: %4$s.',
           '%s removed dependencies for %3$s: %4$s.',
         ),
+      ),
+
+      '%s edited dependencie(s), added %s: %s; removed %s: %s.' => array(
+        '%s edited dependencies, added: %3$s; removed: %5$s.',
+      ),
+
+      '%s edited dependencie(s) for %s, added %s: %s; removed %s: %s.' => array(
+        '%s edited dependencies for %s, added: %3$s; removed: %5$s.',
       ),
 
       '%s added %s dependent revision(s): %s.' => array(
@@ -1358,6 +1381,11 @@ final class PhabricatorUSEnglishTranslation
       'This action has no effect on %s target(s): %s.' => array(
         'This action has no effect on a target: %2$s.',
         'This action has no effect on targets: %2$s.',
+      ),
+
+      'Mail sent in the last %s day(s).' => array(
+        'Mail sent in the last day.',
+        'Mail sent in the last %s days.',
       ),
 
     );

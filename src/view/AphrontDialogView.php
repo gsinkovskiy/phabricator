@@ -1,6 +1,8 @@
 <?php
 
-final class AphrontDialogView extends AphrontView {
+final class AphrontDialogView
+  extends AphrontView
+  implements AphrontResponseProducerInterface {
 
   private $title;
   private $shortTitle;
@@ -290,10 +292,11 @@ final class AphrontDialogView extends AphrontView {
     }
 
     if (!$this->renderAsForm) {
-      $buttons = array(phabricator_form(
-        $this->user,
-        $form_attributes,
-        array_merge($hidden_inputs, $buttons)),
+      $buttons = array(
+        phabricator_form(
+          $this->user,
+          $form_attributes,
+          array_merge($hidden_inputs, $buttons)),
       );
     }
 
@@ -368,6 +371,15 @@ final class AphrontDialogView extends AphrontView {
         $attributes,
         $content);
     }
+  }
+
+
+/* -(  AphrontResponseProducerInterface  )----------------------------------- */
+
+
+  public function produceAphrontResponse() {
+    return id(new AphrontDialogResponse())
+      ->setDialog($this);
   }
 
 }

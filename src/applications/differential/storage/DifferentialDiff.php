@@ -101,9 +101,15 @@ final class DifferentialDiff
     if (!$this->getID()) {
       return array();
     }
-    return id(new DifferentialChangeset())->loadAllWhere(
+    $changesets = id(new DifferentialChangeset())->loadAllWhere(
       'diffID = %d',
       $this->getID());
+
+    foreach ($changesets as $changeset) {
+      $changeset->attachDiff($this);
+    }
+
+    return $changesets;
   }
 
   public function save() {
@@ -331,6 +337,47 @@ final class DifferentialDiff
     return $this->assertAttached($this->buildable);
   }
 
+  public function getBuildTargetPHIDs() {
+    $buildable = $this->getBuildable();
+
+    if (!$buildable) {
+      return array();
+    }
+
+    $target_phids = array();
+    foreach ($buildable->getBuilds() as $build) {
+      foreach ($build->getBuildTargets() as $target) {
+        $target_phids[] = $target->getPHID();
+      }
+    }
+
+    return $target_phids;
+  }
+
+  public function loadCoverageMap(PhabricatorUser $viewer) {
+    $target_phids = $this->getBuildTargetPHIDs();
+    if (!$target_phids) {
+      return array();
+    }
+
+    $unit = id(new HarbormasterBuildUnitMessage())->loadAllWhere(
+      'buildTargetPHID IN (%Ls)',
+      $target_phids);
+
+    $map = array();
+    foreach ($unit as $message) {
+      $coverage = $message->getProperty('coverage', array());
+      foreach ($coverage as $path => $coverage_data) {
+        $map[$path][] = $coverage_data;
+      }
+    }
+
+    foreach ($map as $path => $coverage_items) {
+      $map[$path] = ArcanistUnitTestResult::mergeCoverage($coverage_items);
+    }
+
+    return $map;
+  }
 
 /* -(  PhabricatorPolicyInterface  )----------------------------------------- */
 
@@ -396,6 +443,7 @@ final class DifferentialDiff
 
       if ($repo) {
         $results['repository.callsign'] = $repo->getCallsign();
+        $results['repository.phid'] = $repo->getPHID();
         $results['repository.vcs'] = $repo->getVersionControlSystem();
         $results['repository.uri'] = $repo->getPublicCloneURI();
       }
@@ -412,6 +460,8 @@ final class DifferentialDiff
         pht('The differential revision ID, if applicable.'),
       'repository.callsign' =>
         pht('The callsign of the repository in Phabricator.'),
+      'repository.phid' =>
+        pht('The PHID of the repository in Phabricator.'),
       'repository.vcs' =>
         pht('The version control system, either "svn", "hg" or "git".'),
       'repository.uri' =>
