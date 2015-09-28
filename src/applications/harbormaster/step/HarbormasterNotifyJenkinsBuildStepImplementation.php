@@ -15,6 +15,10 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
     return pht('Notify Jenkins about a new commit.');
   }
 
+  public function getBuildStepGroupKey() {
+    return HarbormasterExternalBuildStepGroup::GROUPKEY;
+  }
+
   public function execute(
     HarbormasterBuild $build,
     HarbormasterBuildTarget $build_target) {
@@ -66,24 +70,35 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
       $this->drequest->getCommit(),
     ));
 
-    $log_body = $this->build->createLog($this->buildTarget, $uri, 'http-body');
-    $start = $log_body->start();
-
     $future = id(new HTTPSFuture($uri, $this->getSvnLookOutput()))
       ->setMethod('POST')
       ->addHeader('Content-Type', 'text/plain;charset=UTF-8')
       ->setTimeout(30);
 
-    list($status, $body, $headers) = $this->resolveFuture(
+    $this->resolveFutures(
       $this->build,
       $this->buildTarget,
-      $future);
+      array($future));
 
-    $log_body->append($body);
-    $log_body->finalize($start);
+    list($status, $body, $headers) = $future->resolve();
+
+    $header_lines = array();
+    foreach ($headers as $header) {
+      list($head, $tail) = $header;
+      $header_lines[] = "{$head}: {$tail}";
+    }
+    $header_lines = implode("\n", $header_lines);
+
+    $this->buildTarget
+      ->newLog($uri, 'http.head')
+      ->append($header_lines);
+
+    $this->buildTarget
+        ->newLog($uri, 'http.body')
+        ->append($body);
 
     if ($status->getStatusCode() != 200) {
-      $this->build->setBuildStatus(HarbormasterBuild::STATUS_FAILED);
+      throw new HarbormasterBuildFailureException();
     }
   }
 
