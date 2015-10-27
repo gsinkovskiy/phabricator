@@ -428,9 +428,15 @@ final class PhabricatorAuditListView extends AphrontView {
   }
 
   private function prepareTransactions() {
+    $commit_phids = array_keys($this->getCommits());
+
+    if (!$commit_phids) {
+      $commit_phids = array(-1);
+    }
+
     $this->transactions = id(new PhabricatorAuditTransactionQuery())
       ->setViewer($this->getUser())
-      ->withObjectPHIDs(array_keys($this->getCommits()))
+      ->withObjectPHIDs($commit_phids)
       ->needHandles(false)
       ->withTransactionTypes(array(
         // Only commits, that needs audit have these.
