@@ -324,8 +324,13 @@ final class PhabricatorAuditListView extends AphrontView {
 
     foreach ($this->transactions as $xaction) {
       if (in_array($xaction->getTransactionType(), $watch_types)) {
-        $modification_dates[$xaction->getObjectPHID()] =
-          $xaction->getDateModified();
+        $commit_phid = $xaction->getObjectPHID();
+        $transaction_date = $xaction->getDateModified();
+        $last_transaction_date = idx($modification_dates, $commit_phid, 0);
+
+        if ($transaction_date > $last_transaction_date) {
+          $modification_dates[$commit_phid] = $transaction_date;
+        }
       }
     }
 
