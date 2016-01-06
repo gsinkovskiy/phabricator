@@ -40,7 +40,7 @@ final class PhabricatorFlagAddFlagHeraldAction extends HeraldAction {
       ->setObjectPHID($phid)
       ->setReasonPHID($rule->getPHID())
       ->setColor($effect->getTarget())
-      ->setNote('')
+      ->setNote(pht('Added by %s %s.', $rule->getMonogram(), $rule->getName()))
       ->save();
 
     $this->logEffect(self::DO_FLAG, $flag->getColor());
