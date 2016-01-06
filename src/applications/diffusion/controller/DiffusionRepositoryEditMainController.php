@@ -32,6 +32,7 @@ final class DiffusionRepositoryEditMainController
 
     $has_local = $repository->usesLocalWorkingCopy();
     $supports_staging = $repository->supportsStaging();
+    $supports_automation = $repository->supportsAutomation();
 
     $crumbs = $this->buildApplicationCrumbs($is_main = true);
 
@@ -99,6 +100,13 @@ final class DiffusionRepositoryEditMainController
       $staging_properties = $this->buildStagingProperties(
         $repository,
         $this->buildStagingActions($repository));
+    }
+
+    $automation_properties = null;
+    if ($supports_automation) {
+      $automation_properties = $this->buildAutomationProperties(
+        $repository,
+        $this->buildAutomationActions($repository));
     }
 
     $actions_properties = $this->buildActionsProperties(
@@ -172,6 +180,12 @@ final class DiffusionRepositoryEditMainController
         ->addPropertyList($staging_properties);
     }
 
+    if ($automation_properties) {
+      $boxes[] = id(new PHUIObjectBoxView())
+        ->setHeaderText(pht('Automation'))
+        ->addPropertyList($automation_properties);
+    }
+
     $boxes[] = id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Text Encoding'))
       ->addPropertyList($encoding_properties);
@@ -211,7 +225,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -314,7 +327,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -351,7 +363,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -406,7 +417,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -456,7 +466,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -522,7 +531,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -564,7 +572,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -605,7 +612,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -649,12 +655,10 @@ final class DiffusionRepositoryEditMainController
     return $view;
   }
 
-
   private function buildStagingActions(PhabricatorRepository $repository) {
     $viewer = $this->getViewer();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())
@@ -688,11 +692,63 @@ final class DiffusionRepositoryEditMainController
     return $view;
   }
 
+  private function buildAutomationActions(PhabricatorRepository $repository) {
+    $viewer = $this->getViewer();
+
+    $view = id(new PhabricatorActionListView())
+      ->setUser($viewer);
+
+    $edit = id(new PhabricatorActionView())
+      ->setIcon('fa-pencil')
+      ->setName(pht('Edit Automation'))
+      ->setHref(
+        $this->getRepositoryControllerURI($repository, 'edit/automation/'));
+    $view->addAction($edit);
+
+    $can_test = $repository->canPerformAutomation();
+
+    $test = id(new PhabricatorActionView())
+      ->setIcon('fa-gamepad')
+      ->setName(pht('Test Configuration'))
+      ->setWorkflow(true)
+      ->setDisabled(!$can_test)
+      ->setHref(
+        $this->getRepositoryControllerURI(
+          $repository,
+          'edit/testautomation/'));
+    $view->addAction($test);
+
+    return $view;
+  }
+
+  private function buildAutomationProperties(
+    PhabricatorRepository $repository,
+    PhabricatorActionListView $actions) {
+    $viewer = $this->getViewer();
+
+    $view = id(new PHUIPropertyListView())
+      ->setUser($viewer)
+      ->setActionList($actions);
+
+    $blueprint_phids = $repository->getAutomationBlueprintPHIDs();
+    if (!$blueprint_phids) {
+      $blueprint_view = phutil_tag('em', array(), pht('Not Configured'));
+    } else {
+      $blueprint_view = id(new DrydockObjectAuthorizationView())
+        ->setUser($viewer)
+        ->setObjectPHID($repository->getPHID())
+        ->setBlueprintPHIDs($blueprint_phids);
+    }
+
+    $view->addProperty(pht('Automation'), $blueprint_view);
+
+    return $view;
+  }
+
   private function buildHostingActions(PhabricatorRepository $repository) {
     $user = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($user);
 
     $edit = id(new PhabricatorActionView())
@@ -1200,7 +1256,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $mirror_actions = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $new_mirror_uri = $this->getRepositoryControllerURI(
@@ -1279,7 +1334,6 @@ final class DiffusionRepositoryEditMainController
     $viewer = $this->getRequest()->getUser();
 
     $view = id(new PhabricatorActionListView())
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $edit = id(new PhabricatorActionView())

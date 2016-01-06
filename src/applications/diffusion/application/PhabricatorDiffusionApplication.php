@@ -37,12 +37,6 @@ final class PhabricatorDiffusionApplication extends PhabricatorApplication {
     );
   }
 
-  public function getEventListeners() {
-    return array(
-      new DiffusionHovercardEventListener(),
-    );
-  }
-
   public function getRemarkupRules() {
     return array(
       new DiffusionCommitRemarkupRule(),
@@ -102,6 +96,8 @@ final class PhabricatorDiffusionApplication extends PhabricatorApplication {
             'update/' => 'DiffusionRepositoryEditUpdateController',
             'symbol/' => 'DiffusionRepositorySymbolsController',
             'staging/' => 'DiffusionRepositoryEditStagingController',
+            'automation/' => 'DiffusionRepositoryEditAutomationController',
+            'testautomation/' => 'DiffusionRepositoryTestAutomationController',
           ),
           'pathtree/(?P<dblob>.*)' => 'DiffusionPathTreeController',
           'mirror/' => array(

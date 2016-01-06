@@ -53,7 +53,7 @@ final class DivinerBookController extends DivinerController {
           ->setName($book->getRepository()->getMonogram()));
     }
 
-    $document = new PHUIDocumentView();
+    $document = new PHUIDocumentViewPro();
     $document->setHeader($header);
     $document->addClass('diviner-view');
 
@@ -125,8 +125,7 @@ final class DivinerBookController extends DivinerController {
 
     $action_view = id(new PhabricatorActionListView())
       ->setUser($user)
-      ->setObject($book)
-      ->setObjectURI($this->getRequest()->getRequestURI());
+      ->setObject($book);
 
     $action_view->addAction(
       id(new PhabricatorActionView())

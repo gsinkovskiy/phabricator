@@ -7,15 +7,28 @@ final class DrydockLease extends DrydockDAO
   protected $resourceType;
   protected $until;
   protected $ownerPHID;
+  protected $authorizingPHID;
   protected $attributes = array();
   protected $status = DrydockLeaseStatus::STATUS_PENDING;
 
   private $resource = self::ATTACHABLE;
+  private $unconsumedCommands = self::ATTACHABLE;
+
   private $releaseOnDestruction;
   private $isAcquired = false;
   private $isActivated = false;
   private $activateWhenAcquired = false;
   private $slotLocks = array();
+
+  public static function initializeNewLease() {
+    $lease = new DrydockLease();
+
+    // Pregenerate a PHID so that the caller can set something up to release
+    // this lease before queueing it for activation.
+    $lease->setPHID($lease->generatePHID());
+
+    return $lease;
+  }
 
   /**
    * Flag this lease to be released when its destructor is called. This is
@@ -104,24 +117,57 @@ final class DrydockLease extends DrydockDAO
     return ($this->resource !== null);
   }
 
+  public function getUnconsumedCommands() {
+    return $this->assertAttached($this->unconsumedCommands);
+  }
+
+  public function attachUnconsumedCommands(array $commands) {
+    $this->unconsumedCommands = $commands;
+    return $this;
+  }
+
+  public function isReleasing() {
+    foreach ($this->getUnconsumedCommands() as $command) {
+      if ($command->getCommand() == DrydockCommand::COMMAND_RELEASE) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   public function queueForActivation() {
     if ($this->getID()) {
       throw new Exception(
         pht('Only new leases may be queued for activation!'));
     }
 
+    if (!$this->getAuthorizingPHID()) {
+      throw new Exception(
+        pht(
+          'Trying to queue a lease for activation without an authorizing '.
+          'object. Use "%s" to specify the PHID of the authorizing object. '.
+          'The authorizing object must be approved to use the allowed '.
+          'blueprints.',
+          'setAuthorizingPHID()'));
+    }
+
+    if (!$this->getAllowedBlueprintPHIDs()) {
+      throw new Exception(
+        pht(
+          'Trying to queue a lease for activation without any allowed '.
+          'Blueprints. Use "%s" to specify allowed blueprints. The '.
+          'authorizing object must be approved to use the allowed blueprints.',
+          'setAllowedBlueprintPHIDs()'));
+    }
+
     $this
       ->setStatus(DrydockLeaseStatus::STATUS_PENDING)
       ->save();
 
-    $task = PhabricatorWorker::scheduleTask(
-      'DrydockAllocatorWorker',
-      array(
-        'leasePHID' => $this->getPHID(),
-      ),
-      array(
-        'objectPHID' => $this->getPHID(),
-      ));
+    $this->scheduleUpdate();
+
+    $this->logEvent(DrydockLeaseQueuedLogType::LOGCONST);
 
     return $this;
   }
@@ -217,17 +263,32 @@ final class DrydockLease extends DrydockDAO
 
     $this->openTransaction();
 
-      $this
-        ->setResourcePHID($resource->getPHID())
-        ->setStatus($new_status)
-        ->save();
-
+    try {
       DrydockSlotLock::acquireLocks($this->getPHID(), $this->slotLocks);
       $this->slotLocks = array();
+    } catch (DrydockSlotLockException $ex) {
+      $this->killTransaction();
+
+      $this->logEvent(
+        DrydockSlotLockFailureLogType::LOGCONST,
+        array(
+          'locks' => $ex->getLockMap(),
+        ));
+
+      throw $ex;
+    }
+
+    $this
+      ->setResourcePHID($resource->getPHID())
+      ->attachResource($resource)
+      ->setStatus($new_status)
+      ->save();
 
     $this->saveTransaction();
 
     $this->isAcquired = true;
+
+    $this->logEvent(DrydockLeaseAcquiredLogType::LOGCONST);
 
     if ($new_status == DrydockLeaseStatus::STATUS_ACTIVE) {
       $this->didActivate();
@@ -261,12 +322,24 @@ final class DrydockLease extends DrydockDAO
 
     $this->openTransaction();
 
-      $this
-        ->setStatus(DrydockLeaseStatus::STATUS_ACTIVE)
-        ->save();
-
+    try {
       DrydockSlotLock::acquireLocks($this->getPHID(), $this->slotLocks);
       $this->slotLocks = array();
+    } catch (DrydockSlotLockException $ex) {
+      $this->killTransaction();
+
+      $this->logEvent(
+        DrydockSlotLockFailureLogType::LOGCONST,
+        array(
+          'locks' => $ex->getLockMap(),
+        ));
+
+      throw $ex;
+    }
+
+    $this
+      ->setStatus(DrydockLeaseStatus::STATUS_ACTIVE)
+      ->save();
 
     $this->saveTransaction();
 
@@ -295,6 +368,16 @@ final class DrydockLease extends DrydockDAO
     }
   }
 
+  public function canReceiveCommands() {
+    switch ($this->getStatus()) {
+      case DrydockLeaseStatus::STATUS_RELEASED:
+      case DrydockLeaseStatus::STATUS_DESTROYED:
+        return false;
+      default:
+        return true;
+    }
+  }
+
   public function scheduleUpdate($epoch = null) {
     PhabricatorWorker::scheduleTask(
       'DrydockLeaseUpdateWorker',
@@ -304,13 +387,29 @@ final class DrydockLease extends DrydockDAO
       ),
       array(
         'objectPHID' => $this->getPHID(),
-        'delayUntil' => $epoch,
+        'delayUntil' => ($epoch ? (int)$epoch : null),
       ));
+  }
+
+  public function setAwakenTaskIDs(array $ids) {
+    $this->setAttribute('internal.awakenTaskIDs', $ids);
+    return $this;
+  }
+
+  public function setAllowedBlueprintPHIDs(array $phids) {
+    $this->setAttribute('internal.blueprintPHIDs', $phids);
+    return $this;
+  }
+
+  public function getAllowedBlueprintPHIDs() {
+    return $this->getAttribute('internal.blueprintPHIDs', array());
   }
 
   private function didActivate() {
     $viewer = PhabricatorUser::getOmnipotentUser();
     $need_update = false;
+
+    $this->logEvent(DrydockLeaseActivatedLogType::LOGCONST);
 
     $commands = id(new DrydockCommandQuery())
       ->setViewer($viewer)
@@ -329,6 +428,41 @@ final class DrydockLease extends DrydockDAO
     if ($expires) {
       $this->scheduleUpdate($expires);
     }
+
+    $this->awakenTasks();
+  }
+
+  public function logEvent($type, array $data = array()) {
+    $log = id(new DrydockLog())
+      ->setEpoch(PhabricatorTime::getNow())
+      ->setType($type)
+      ->setData($data);
+
+    $log->setLeasePHID($this->getPHID());
+
+    $resource_phid = $this->getResourcePHID();
+    if ($resource_phid) {
+      $resource = $this->getResource();
+
+      $log->setResourcePHID($resource->getPHID());
+      $log->setBlueprintPHID($resource->getBlueprintPHID());
+    }
+
+    return $log->save();
+  }
+
+  /**
+   * Awaken yielded tasks after a state change.
+   *
+   * @return this
+   */
+  public function awakenTasks() {
+    $awaken_ids = $this->getAttribute('internal.awakenTaskIDs');
+    if (is_array($awaken_ids) && $awaken_ids) {
+      PhabricatorWorker::awakenTaskIDs($awaken_ids);
+    }
+
+    return $this;
   }
 
 

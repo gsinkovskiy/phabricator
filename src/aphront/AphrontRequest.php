@@ -28,7 +28,7 @@ final class AphrontRequest extends Phobject {
   private $applicationConfiguration;
   private $site;
   private $controller;
-  private $uriData;
+  private $uriData = array();
   private $cookiePrefix;
 
   public function __construct($host, $path) {
@@ -234,6 +234,10 @@ final class AphrontRequest extends Phobject {
 
   public static function getCSRFHeaderName() {
     return 'X-Phabricator-Csrf';
+  }
+
+  public static function getViaHeaderName() {
+    return 'X-Phabricator-Via';
   }
 
   public function validateCSRF() {

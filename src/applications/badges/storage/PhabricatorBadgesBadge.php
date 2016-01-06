@@ -22,8 +22,8 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
 
   private $recipientPHIDs = self::ATTACHABLE;
 
-  const STATUS_OPEN = 'open';
-  const STATUS_CLOSED = 'closed';
+  const STATUS_ACTIVE = 'open';
+  const STATUS_ARCHIVED = 'closed';
 
   const DEFAULT_ICON = 'fa-star';
   const DEFAULT_QUALITY = 'green';
@@ -38,8 +38,8 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
 
   public static function getStatusNameMap() {
     return array(
-      self::STATUS_OPEN => pht('Active'),
-      self::STATUS_CLOSED => pht('Archived'),
+      self::STATUS_ACTIVE => pht('Active'),
+      self::STATUS_ARCHIVED => pht('Archived'),
     );
   }
 
@@ -53,10 +53,6 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
       self::LEGENDARY => pht('Legendary'),
       self::HEIRLOOM => pht('Heirloom'),
     );
-  }
-
-  public static function getIconNameMap() {
-    return PhabricatorBadgesIcon::getIconMap();
   }
 
   public static function initializeNewBadge(PhabricatorUser $actor) {
@@ -75,7 +71,7 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
       ->setQuality(self::DEFAULT_QUALITY)
       ->setCreatorPHID($actor->getPHID())
       ->setEditPolicy($edit_policy)
-      ->setStatus(self::STATUS_OPEN);
+      ->setStatus(self::STATUS_ACTIVE);
   }
 
   protected function getConfiguration() {
@@ -103,8 +99,8 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
       PhabricatorPHID::generateNewPHID(PhabricatorBadgesPHIDType::TYPECONST);
   }
 
-  public function isClosed() {
-    return ($this->getStatus() == self::STATUS_CLOSED);
+  public function isArchived() {
+    return ($this->getStatus() == self::STATUS_ARCHIVED);
   }
 
   public function attachRecipientPHIDs(array $phids) {

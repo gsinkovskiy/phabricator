@@ -9,6 +9,8 @@ final class HarbormasterBuild extends HarbormasterDAO
   protected $buildPlanPHID;
   protected $buildStatus;
   protected $buildGeneration;
+  protected $buildParameters = array();
+  protected $initiatorPHID;
   protected $planAutoKey;
 
   private $buildable = self::ATTACHABLE;
@@ -156,10 +158,14 @@ final class HarbormasterBuild extends HarbormasterDAO
   protected function getConfiguration() {
     return array(
       self::CONFIG_AUX_PHID => true,
+      self::CONFIG_SERIALIZATION => array(
+        'buildParameters' => self::SERIALIZATION_JSON,
+      ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'buildStatus' => 'text32',
         'buildGeneration' => 'uint32',
         'planAutoKey' => 'text32?',
+        'initiatorPHID' => 'phid?',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'key_buildable' => array(
@@ -256,7 +262,12 @@ final class HarbormasterBuild extends HarbormasterDAO
       'repository.uri' => null,
       'step.timestamp' => null,
       'build.id' => null,
+      'initiator.phid' => null,
     );
+
+    foreach ($this->getBuildParameters() as $key => $value) {
+      $results['build/'.$key] = $value;
+    }
 
     $buildable = $this->getBuildable();
     $object = $buildable->getBuildableObject();
@@ -267,6 +278,7 @@ final class HarbormasterBuild extends HarbormasterDAO
 
     $results['step.timestamp'] = time();
     $results['build.id'] = $this->getID();
+    $results['initiator.phid'] = $this->getInitiatorPHID();
 
     return $results;
   }
@@ -281,6 +293,9 @@ final class HarbormasterBuild extends HarbormasterDAO
       'step.timestamp' => pht('The current UNIX timestamp.'),
       'build.id' => pht('The ID of the current build.'),
       'target.phid' => pht('The PHID of the current build target.'),
+      'initiator.phid' => pht(
+        'The PHID of the user or Object that initiated the build, '.
+        'if applicable.'),
     );
 
     foreach ($objects as $object) {

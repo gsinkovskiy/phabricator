@@ -34,12 +34,6 @@ final class PhabricatorPeopleApplication extends PhabricatorApplication {
     return false;
   }
 
-  public function getEventListeners() {
-    return array(
-      new PhabricatorPeopleHovercardEventListener(),
-    );
-  }
-
   public function getRoutes() {
     return array(
       '/people/' => array(
@@ -95,14 +89,14 @@ final class PhabricatorPeopleApplication extends PhabricatorApplication {
     if (!$user->getIsAdmin()) {
       return array();
     }
+    $limit = self::MAX_STATUS_ITEMS;
 
     $need_approval = id(new PhabricatorPeopleQuery())
       ->setViewer($user)
       ->withIsApproved(false)
       ->withIsDisabled(false)
-      ->setLimit(self::MAX_STATUS_ITEMS)
+      ->setLimit($limit)
       ->execute();
-
     if (!$need_approval) {
       return array();
     }
@@ -110,10 +104,16 @@ final class PhabricatorPeopleApplication extends PhabricatorApplication {
     $status = array();
 
     $count = count($need_approval);
-    $count_str = self::formatStatusCount(
-      $count,
-      '%s Users Need Approval',
-      '%d User(s) Need Approval');
+    if ($count >= $limit) {
+      $count_str = pht(
+        '%s+ User(s) Need Approval',
+        new PhutilNumber($limit - 1));
+    } else {
+      $count_str = pht(
+        '%s User(s) Need Approval',
+        new PhutilNumber($count));
+    }
+
     $type = PhabricatorApplicationStatusView::TYPE_NEEDS_ATTENTION;
     $status[] = id(new PhabricatorApplicationStatusView())
       ->setType($type)

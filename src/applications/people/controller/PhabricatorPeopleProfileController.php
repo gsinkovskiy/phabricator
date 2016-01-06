@@ -43,7 +43,6 @@ final class PhabricatorPeopleProfileController
 
     $actions = id(new PhabricatorActionListView())
       ->setObject($user)
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setUser($viewer);
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
@@ -72,11 +71,14 @@ final class PhabricatorPeopleProfileController
       $href = id(new PhutilURI('/conpherence/new/'))
         ->setQueryParam('participant', $user->getPHID());
 
+      $can_send = $viewer->isLoggedIn();
+
       $actions->addAction(
         id(new PhabricatorActionView())
           ->setIcon('fa-comments')
           ->setName(pht('Send Message'))
           ->setWorkflow(true)
+          ->setDisabled(!$can_send)
           ->setHref($href));
     }
 
@@ -207,6 +209,7 @@ final class PhabricatorPeopleProfileController
         $badges = id(new PhabricatorBadgesQuery())
           ->setViewer($viewer)
           ->withPHIDs($badge_phids)
+          ->withStatuses(array(PhabricatorBadgesBadge::STATUS_ACTIVE))
           ->execute();
 
         $flex = new PHUIBadgeBoxView();

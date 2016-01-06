@@ -15,6 +15,8 @@ abstract class PhabricatorStandardCustomField
   private $fieldError;
   private $required;
   private $default;
+  private $isCopyable;
+  private $hasStorageValue;
 
   abstract public function getFieldType();
 
@@ -115,6 +117,9 @@ abstract class PhabricatorStandardCustomField
         case 'default':
           $this->setFieldValue($value);
           break;
+        case 'copy':
+          $this->setIsCopyable($value);
+          break;
         case 'type':
           // We set this earlier on.
           break;
@@ -185,8 +190,22 @@ abstract class PhabricatorStandardCustomField
     return idx($this->strings, $key, $default);
   }
 
+  public function setIsCopyable($is_copyable) {
+    $this->isCopyable = $is_copyable;
+    return $this;
+  }
+
+  public function getIsCopyable() {
+    return $this->isCopyable;
+  }
+
   public function shouldUseStorage() {
-    return true;
+    try {
+      $object = $this->newStorageObject();
+      return true;
+    } catch (PhabricatorCustomFieldImplementationIncompleteException $ex) {
+      return false;
+    }
   }
 
   public function getValueForStorage() {
@@ -195,6 +214,19 @@ abstract class PhabricatorStandardCustomField
 
   public function setValueFromStorage($value) {
     return $this->setFieldValue($value);
+  }
+
+  public function didSetValueFromStorage() {
+    $this->hasStorageValue = true;
+    return $this;
+  }
+
+  public function getOldValueForApplicationTransactions() {
+    if ($this->hasStorageValue) {
+      return $this->getValueForStorage();
+    } else {
+      return null;
+    }
   }
 
   public function shouldAppearInApplicationTransactions() {
@@ -420,5 +452,30 @@ abstract class PhabricatorStandardCustomField
       $document->addField($field_key, $field_value);
     }
   }
+
+  protected function newStandardEditField() {
+    $short = $this->getModernFieldKey();
+
+    return parent::newStandardEditField()
+      ->setEditTypeKey($short)
+      ->setIsCopyable($this->getIsCopyable());
+  }
+
+  public function shouldAppearInConduitTransactions() {
+    return true;
+  }
+
+  public function shouldAppearInConduitDictionary() {
+    return true;
+  }
+
+  public function getModernFieldKey() {
+    return 'custom.'.$this->getRawStandardFieldKey();
+  }
+
+  public function getConduitDictionaryValue() {
+    return $this->getFieldValue();
+  }
+
 
 }

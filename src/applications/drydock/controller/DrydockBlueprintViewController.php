@@ -51,16 +51,27 @@ final class DrydockBlueprintViewController extends DrydockBlueprintController {
 
     $resource_box = $this->buildResourceBox($blueprint);
 
+    $authorizations_box = $this->buildAuthorizationsBox($blueprint);
+
     $timeline = $this->buildTransactionTimeline(
       $blueprint,
       new DrydockBlueprintTransactionQuery());
     $timeline->setShouldTerminate(true);
+
+    $log_query = id(new DrydockLogQuery())
+      ->withBlueprintPHIDs(array($blueprint->getPHID()));
+
+    $log_box = $this->buildLogBox(
+      $log_query,
+      $this->getApplicationURI("blueprint/{$id}/logs/query/all/"));
 
     return $this->buildApplicationPage(
       array(
         $crumbs,
         $object_box,
         $resource_box,
+        $authorizations_box,
+        $log_box,
         $timeline,
       ),
       array(
@@ -75,7 +86,6 @@ final class DrydockBlueprintViewController extends DrydockBlueprintController {
 
     $view = id(new PhabricatorActionListView())
       ->setUser($viewer)
-      ->setObjectURI($this->getRequest()->getRequestURI())
       ->setObject($blueprint);
 
     $edit_uri = $this->getApplicationURI("blueprint/edit/{$id}/");
@@ -159,11 +169,77 @@ final class DrydockBlueprintViewController extends DrydockBlueprintController {
           ->setTag('a')
           ->setHref($resources_uri)
           ->setIconFont('fa-search')
-          ->setText(pht('View All Resources')));
+          ->setText(pht('View All')));
 
     return id(new PHUIObjectBoxView())
       ->setHeader($resource_header)
       ->setObjectList($resource_list);
+  }
+
+  private function buildAuthorizationsBox(DrydockBlueprint $blueprint) {
+    $viewer = $this->getViewer();
+
+    $limit = 25;
+
+    // If there are pending authorizations against this blueprint, make sure
+    // we show them first.
+
+    $pending_authorizations = id(new DrydockAuthorizationQuery())
+      ->setViewer($viewer)
+      ->withBlueprintPHIDs(array($blueprint->getPHID()))
+      ->withObjectStates(
+        array(
+          DrydockAuthorization::OBJECTAUTH_ACTIVE,
+        ))
+      ->withBlueprintStates(
+        array(
+          DrydockAuthorization::BLUEPRINTAUTH_REQUESTED,
+        ))
+      ->setLimit($limit)
+      ->execute();
+
+    $all_authorizations = id(new DrydockAuthorizationQuery())
+      ->setViewer($viewer)
+      ->withBlueprintPHIDs(array($blueprint->getPHID()))
+      ->withObjectStates(
+        array(
+          DrydockAuthorization::OBJECTAUTH_ACTIVE,
+        ))
+      ->withBlueprintStates(
+        array(
+          DrydockAuthorization::BLUEPRINTAUTH_REQUESTED,
+          DrydockAuthorization::BLUEPRINTAUTH_AUTHORIZED,
+        ))
+      ->setLimit($limit)
+      ->execute();
+
+    $authorizations =
+      mpull($pending_authorizations, null, 'getPHID') +
+      mpull($all_authorizations, null, 'getPHID');
+
+    $authorization_list = id(new DrydockAuthorizationListView())
+      ->setUser($viewer)
+      ->setAuthorizations($authorizations)
+      ->setNoDataString(
+        pht('No objects have active authorizations to use this blueprint.'));
+
+    $id = $blueprint->getID();
+    $authorizations_uri = "blueprint/{$id}/authorizations/query/all/";
+    $authorizations_uri = $this->getApplicationURI($authorizations_uri);
+
+    $authorizations_header = id(new PHUIHeaderView())
+      ->setHeader(pht('Active Authorizations'))
+      ->addActionLink(
+        id(new PHUIButtonView())
+          ->setTag('a')
+          ->setHref($authorizations_uri)
+          ->setIconFont('fa-search')
+          ->setText(pht('View All')));
+
+    return id(new PHUIObjectBoxView())
+      ->setHeader($authorizations_header)
+      ->setObjectList($authorization_list);
+
   }
 
 

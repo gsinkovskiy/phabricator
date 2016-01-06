@@ -67,6 +67,13 @@ final class PhabricatorProjectBoardViewController
     // TODO: Expand the checks here if we add the ability
     // to hide the Backlog column
     if (!$columns) {
+      $can_edit = PhabricatorPolicyFilter::hasCapability(
+        $viewer,
+        $project,
+        PhabricatorPolicyCapability::CAN_EDIT);
+      if (!$can_edit) {
+        return $this->noAccessDialog($project);
+      }
       switch ($request->getStr('initialize-type')) {
         case 'backlog-only':
           $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
@@ -269,13 +276,12 @@ final class PhabricatorProjectBoardViewController
       'boardID' => $board_id,
       'projectPHID' => $project->getPHID(),
       'moveURI' => $this->getApplicationURI('move/'.$project->getID().'/'),
-      'createURI' => '/maniphest/task/create/',
+      'createURI' => $this->getCreateURI(),
       'order' => $this->sortKey,
     );
     $this->initBehavior(
       'project-boards',
       $behavior_config);
-    $this->addExtraQuickSandConfig(array('boardConfig' => $behavior_config));
 
     $this->handles = ManiphestTaskListView::loadTaskHandles($viewer, $tasks);
 
@@ -379,16 +385,21 @@ final class PhabricatorProjectBoardViewController
       ->addClass('project-board-wrapper');
 
     $nav = $this->buildIconNavView($project);
-    $nav->appendChild($header_box);
-    $nav->appendChild($board_box);
 
-    return $this->buildApplicationPage(
-      $nav,
-      array(
-        'title' => pht('%s Board', $project->getName()),
-        'showFooter' => false,
-        'pageObjects' => array($project->getPHID()),
-      ));
+    return $this->newPage()
+      ->setTitle(pht('%s Board', $project->getName()))
+      ->setPageObjectPHIDs(array($project->getPHID()))
+      ->setShowFooter(false)
+      ->setNavigation($nav)
+      ->addQuicksandConfig(
+        array(
+          'boardConfig' => $behavior_config,
+        ))
+      ->appendChild(
+        array(
+          $header_box,
+          $board_box,
+        ));
   }
 
   private function buildSortMenu(
@@ -619,7 +630,7 @@ final class PhabricatorProjectBoardViewController
     $column_items[] = id(new PhabricatorActionView())
       ->setIcon('fa-plus')
       ->setName(pht('Create Task...'))
-      ->setHref('/maniphest/task/create/')
+      ->setHref($this->getCreateURI())
       ->addSigil('column-add-task')
       ->setMetadata(
         array(
@@ -713,6 +724,20 @@ final class PhabricatorProjectBoardViewController
       ->setDialog($dialog);
   }
 
+  private function noAccessDialog(PhabricatorProject $project) {
+
+    $instructions = pht('This workboard has not been setup yet.');
+
+    $dialog = id(new AphrontDialogView())
+      ->setUser($this->getRequest()->getUser())
+      ->setTitle(pht('No Workboard'))
+      ->addCancelButton($this->getApplicationURI('view/'.$project->getID().'/'))
+      ->appendParagraph($instructions);
+
+    return id(new AphrontDialogResponse())
+      ->setDialog($dialog);
+  }
+
 
   /**
    * Add current state parameters (like order and the visibility of hidden
@@ -741,6 +766,24 @@ final class PhabricatorProjectBoardViewController
     $base->setQueryParam('hidden', $this->showHidden ? 'true' : null);
 
     return $base;
+  }
+
+  private function getCreateURI() {
+    $viewer = $this->getViewer();
+
+    // TODO: This should be cleaned up, but maybe we're going to make options
+    // for each column or board?
+    $edit_config = id(new ManiphestEditEngine())
+      ->setViewer($viewer)
+      ->loadDefaultEditConfiguration();
+    if ($edit_config) {
+      $form_key = $edit_config->getIdentifier();
+      $create_uri = "/maniphest/task/edit/form/{$form_key}/";
+    } else {
+      $create_uri = '/maniphest/task/edit/';
+    }
+
+    return $create_uri;
   }
 
 }

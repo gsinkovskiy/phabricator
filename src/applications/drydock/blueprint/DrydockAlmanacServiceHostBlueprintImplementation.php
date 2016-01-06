@@ -69,8 +69,9 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
 
       $binding_phid = $binding->getPHID();
 
-      $resource = $this->newResourceTemplate($blueprint, $device_name)
+      $resource = $this->newResourceTemplate($blueprint)
         ->setActivateWhenAllocated(true)
+        ->setAttribute('almanacDeviceName', $device_name)
         ->setAttribute('almanacServicePHID', $binding->getServicePHID())
         ->setAttribute('almanacBindingPHID', $binding_phid)
         ->needSlotLock("almanac.host.binding({$binding_phid})");
@@ -95,15 +96,19 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
     return;
   }
 
+  public function getResourceName(
+    DrydockBlueprint $blueprint,
+    DrydockResource $resource) {
+    $device_name = $resource->getAttribute(
+      'almanacDeviceName',
+      pht('<Unknown>'));
+    return pht('Host (%s)', $device_name);
+  }
+
   public function canAcquireLeaseOnResource(
     DrydockBlueprint $blueprint,
     DrydockResource $resource,
     DrydockLease $lease) {
-
-    if (!DrydockSlotLock::isLockFree($this->getLeaseSlotLock($resource))) {
-      return false;
-    }
-
     return true;
   }
 
@@ -114,7 +119,6 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
 
     $lease
       ->setActivateWhenAcquired(true)
-      ->needSlotLock($this->getLeaseSlotLock($resource))
       ->acquireOnResource($resource);
   }
 
@@ -134,11 +138,6 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
     // We don't create anything when activating a lease, so we don't need to
     // throw anything away.
     return;
-  }
-
-  private function getLeaseSlotLock(DrydockResource $resource) {
-    $resource_phid = $resource->getPHID();
-    return "almanac.host.lease({$resource_phid})";
   }
 
   public function getType() {
@@ -163,7 +162,6 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
           ->withPHIDs(array($binding_phid))
           ->executeOne();
         if (!$binding) {
-          // TODO: This is probably a permanent failure, destroy this resource?
           throw new Exception(
             pht(
               'Unable to load binding "%s" to create command interface.',
@@ -179,7 +177,7 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
     }
   }
 
-  public function getFieldSpecifications() {
+  protected function getCustomFieldSpecifications() {
     return array(
       'almanacServicePHIDs' => array(
         'name' => pht('Almanac Services'),
@@ -198,7 +196,7 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
         'credential.type' =>
           PassphraseSSHPrivateKeyTextCredentialType::CREDENTIAL_TYPE,
       ),
-    ) + parent::getFieldSpecifications();
+    );
   }
 
   private function loadServices(DrydockBlueprint $blueprint) {
@@ -253,13 +251,14 @@ final class DrydockAlmanacServiceHostBlueprintImplementation
           array(
             DrydockResourceStatus::STATUS_PENDING,
             DrydockResourceStatus::STATUS_ACTIVE,
+            DrydockResourceStatus::STATUS_BROKEN,
             DrydockResourceStatus::STATUS_RELEASED,
           ))
         ->execute();
 
       $allocated_phids = array();
       foreach ($pool as $resource) {
-        $allocated_phids[] = $resource->getAttribute('almanacDevicePHID');
+        $allocated_phids[] = $resource->getAttribute('almanacBindingPHID');
       }
       $allocated_phids = array_fuse($allocated_phids);
 

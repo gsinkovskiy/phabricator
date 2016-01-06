@@ -15,7 +15,8 @@ final class DifferentialRevision extends DifferentialDAO
     PhabricatorApplicationTransactionInterface,
     PhabricatorMentionableInterface,
     PhabricatorDestructibleInterface,
-    PhabricatorProjectInterface {
+    PhabricatorProjectInterface,
+    PhabricatorFulltextInterface {
 
   protected $title = '';
   protected $originalTitle;
@@ -662,6 +663,14 @@ final class DifferentialRevision extends DifferentialDAO
 
   public function getAuthor() {
     return $this->getAuthorPHID();
+  }
+
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+
+  public function newFulltextEngine() {
+    return new DifferentialRevisionFulltextEngine();
   }
 
 }

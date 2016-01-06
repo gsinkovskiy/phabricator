@@ -13,7 +13,8 @@ final class PhabricatorRepositoryCommit
     PhabricatorMentionableInterface,
     HarbormasterBuildableInterface,
     PhabricatorCustomFieldInterface,
-    PhabricatorApplicationTransactionInterface {
+    PhabricatorApplicationTransactionInterface,
+    PhabricatorFulltextInterface {
 
   protected $repositoryID;
   protected $phid;
@@ -497,6 +498,13 @@ final class PhabricatorRepositoryCommit
 
   public function getAuthor() {
     return $this->getAuthorPHID();
+  }
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+
+  public function newFulltextEngine() {
+    return new DiffusionCommitFulltextEngine();
   }
 
 }

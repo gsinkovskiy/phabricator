@@ -16,7 +16,31 @@ abstract class DrydockBlueprintImplementation extends Phobject {
   abstract public function getDescription();
 
   public function getFieldSpecifications() {
+    $fields = array();
+
+    $fields += $this->getCustomFieldSpecifications();
+
+    if ($this->shouldUseConcurrentResourceLimit()) {
+      $fields += array(
+        'allocator.limit' => array(
+          'name' => pht('Limit'),
+          'caption' => pht(
+            'Maximum number of resources this blueprint can have active '.
+            'concurrently.'),
+          'type' => 'int',
+        ),
+      );
+    }
+
+    return $fields;
+  }
+
+  protected function getCustomFieldSpecifications() {
     return array();
+  }
+
+  public function getViewer() {
+    return PhabricatorUser::getOmnipotentUser();
   }
 
 
@@ -237,6 +261,19 @@ abstract class DrydockBlueprintImplementation extends Phobject {
     DrydockResource $resource);
 
 
+  /**
+   * Get a human readable name for a resource.
+   *
+   * @param DrydockBlueprint Blueprint which built the resource.
+   * @param DrydockResource Resource to get the name of.
+   * @return string Human-readable resource name.
+   * @task resource
+   */
+  abstract public function getResourceName(
+    DrydockBlueprint $blueprint,
+    DrydockResource $resource);
+
+
 /* -(  Resource Interfaces  )------------------------------------------------ */
 
 
@@ -250,46 +287,6 @@ abstract class DrydockBlueprintImplementation extends Phobject {
 /* -(  Logging  )------------------------------------------------------------ */
 
 
-  /**
-   * @task log
-   */
-  protected function logException(Exception $ex) {
-    $this->log($ex->getMessage());
-  }
-
-
-  /**
-   * @task log
-   */
-  protected function log($message) {
-    self::writeLog(null, null, $message);
-  }
-
-
-  /**
-   * @task log
-   */
-  public static function writeLog(
-    DrydockResource $resource = null,
-    DrydockLease $lease = null,
-    $message = null) {
-
-    $log = id(new DrydockLog())
-      ->setEpoch(time())
-      ->setMessage($message);
-
-    if ($resource) {
-      $log->setResourceID($resource->getID());
-    }
-
-    if ($lease) {
-      $log->setLeaseID($lease->getID());
-    }
-
-    $log->save();
-  }
-
-
   public static function getAllBlueprintImplementations() {
     return id(new PhutilClassMapQuery())
       ->setAncestorClass(__CLASS__)
@@ -300,16 +297,13 @@ abstract class DrydockBlueprintImplementation extends Phobject {
     return idx(self::getAllBlueprintImplementations(), $class);
   }
 
-  protected function newResourceTemplate(
-    DrydockBlueprint $blueprint,
-    $name) {
+  protected function newResourceTemplate(DrydockBlueprint $blueprint) {
 
     $resource = id(new DrydockResource())
       ->setBlueprintPHID($blueprint->getPHID())
       ->attachBlueprint($blueprint)
       ->setType($this->getType())
-      ->setStatus(DrydockResourceStatus::STATUS_PENDING)
-      ->setName($name);
+      ->setStatus(DrydockResourceStatus::STATUS_PENDING);
 
     // Pre-allocate the resource PHID.
     $resource->setPHID($resource->generatePHID());
@@ -318,22 +312,174 @@ abstract class DrydockBlueprintImplementation extends Phobject {
   }
 
   protected function newLease(DrydockBlueprint $blueprint) {
-    return id(new DrydockLease());
+    return DrydockLease::initializeNewLease()
+      ->setAuthorizingPHID($blueprint->getPHID());
   }
 
   protected function requireActiveLease(DrydockLease $lease) {
     $lease_status = $lease->getStatus();
 
     switch ($lease_status) {
+      case DrydockLeaseStatus::STATUS_PENDING:
       case DrydockLeaseStatus::STATUS_ACQUIRED:
-        // TODO: Temporary failure.
-        throw new Exception(pht('Lease still activating.'));
+        throw new PhabricatorWorkerYieldException(15);
       case DrydockLeaseStatus::STATUS_ACTIVE:
         return;
       default:
-        // TODO: Permanent failure.
-        throw new Exception(pht('Lease in bad state.'));
+        throw new Exception(
+          pht(
+            'Lease ("%s") is in bad state ("%s"), expected "%s".',
+            $lease->getPHID(),
+            $lease_status,
+            DrydockLeaseStatus::STATUS_ACTIVE));
     }
+  }
+
+
+  /**
+   * Does this implementation use concurrent resource limits?
+   *
+   * Implementations can override this method to opt into standard limit
+   * behavior, which provides a simple concurrent resource limit.
+   *
+   * @return bool True to use limits.
+   */
+  protected function shouldUseConcurrentResourceLimit() {
+    return false;
+  }
+
+
+  /**
+   * Get the effective concurrent resource limit for this blueprint.
+   *
+   * @param DrydockBlueprint Blueprint to get the limit for.
+   * @return int|null Limit, or `null` for no limit.
+   */
+  protected function getConcurrentResourceLimit(DrydockBlueprint $blueprint) {
+    if ($this->shouldUseConcurrentResourceLimit()) {
+      $limit = $blueprint->getFieldValue('allocator.limit');
+      $limit = (int)$limit;
+      if ($limit > 0) {
+        return $limit;
+      } else {
+        return null;
+      }
+    }
+
+    return null;
+  }
+
+
+  protected function getConcurrentResourceLimitSlotLock(
+    DrydockBlueprint $blueprint) {
+
+    $limit = $this->getConcurrentResourceLimit($blueprint);
+    if ($limit === null) {
+      return;
+    }
+
+    $blueprint_phid = $blueprint->getPHID();
+
+    // TODO: This logic shouldn't do anything awful, but is a little silly. It
+    // would be nice to unify the "huge limit" and "small limit" cases
+    // eventually but it's a little tricky.
+
+    // If the limit is huge, just pick a random slot. This is just stopping
+    // us from exploding if someone types a billion zillion into the box.
+    if ($limit > 1024) {
+      $slot = mt_rand(0, $limit - 1);
+      return "allocator({$blueprint_phid}).limit({$slot})";
+    }
+
+    // For reasonable limits, actually check for an available slot.
+    $locks = DrydockSlotLock::loadLocks($blueprint_phid);
+    $locks = mpull($locks, null, 'getLockKey');
+
+    $slots = range(0, $limit - 1);
+    shuffle($slots);
+
+    foreach ($slots as $slot) {
+      $slot_lock = "allocator({$blueprint_phid}).limit({$slot})";
+      if (empty($locks[$slot_lock])) {
+        return $slot_lock;
+      }
+    }
+
+    // If we found no free slot, just return whatever we checked last (which
+    // is just a random slot). There's a small chance we'll get lucky and the
+    // lock will be free by the time we try to take it, but usually we'll just
+    // fail to grab the lock, throw an appropriate lock exception, and get back
+    // on the right path to retry later.
+    return $slot_lock;
+  }
+
+
+
+  /**
+   * Apply standard limits on resource allocation rate.
+   *
+   * @param DrydockBlueprint The blueprint requesting an allocation.
+   * @return bool True if further allocations should be limited.
+   */
+  protected function shouldLimitAllocatingPoolSize(
+    DrydockBlueprint $blueprint) {
+
+    // TODO: If this mechanism sticks around, these values should be
+    // configurable by the blueprint implementation.
+
+    // Limit on total number of active resources.
+    $total_limit = $this->getConcurrentResourceLimit($blueprint);
+
+    // Always allow at least this many allocations to be in flight at once.
+    $min_allowed = 1;
+
+    // Allow this fraction of allocating resources as a fraction of active
+    // resources.
+    $growth_factor = 0.25;
+
+    $resource = new DrydockResource();
+    $conn_r = $resource->establishConnection('r');
+
+    $counts = queryfx_all(
+      $conn_r,
+      'SELECT status, COUNT(*) N FROM %T
+        WHERE blueprintPHID = %s AND status != %s
+        GROUP BY status',
+      $resource->getTableName(),
+      $blueprint->getPHID(),
+      DrydockResourceStatus::STATUS_DESTROYED);
+    $counts = ipull($counts, 'N', 'status');
+
+    $n_alloc = idx($counts, DrydockResourceStatus::STATUS_PENDING, 0);
+    $n_active = idx($counts, DrydockResourceStatus::STATUS_ACTIVE, 0);
+    $n_broken = idx($counts, DrydockResourceStatus::STATUS_BROKEN, 0);
+    $n_released = idx($counts, DrydockResourceStatus::STATUS_RELEASED, 0);
+
+    // If we're at the limit on total active resources, limit additional
+    // allocations.
+    if ($total_limit !== null) {
+      $n_total = ($n_alloc + $n_active + $n_broken + $n_released);
+      if ($n_total >= $total_limit) {
+        return true;
+      }
+    }
+
+    // If the number of in-flight allocations is fewer than the minimum number
+    // of allowed allocations, don't impose a limit.
+    if ($n_alloc < $min_allowed) {
+      return false;
+    }
+
+    $allowed_alloc = (int)ceil($n_active * $growth_factor);
+
+    // If the number of in-flight allocation is fewer than the number of
+    // allowed allocations according to the pool growth factor, don't impose
+    // a limit.
+    if ($n_alloc < $allowed_alloc) {
+      return false;
+    }
+
+    return true;
   }
 
 }

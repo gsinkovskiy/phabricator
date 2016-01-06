@@ -11,7 +11,8 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
   PhabricatorMentionableInterface,
   PhabricatorFlaggableInterface,
   PhabricatorAuthorAwareInterface,
-  PhabricatorSpacesInterface {
+  PhabricatorSpacesInterface,
+  PhabricatorFulltextInterface {
 
   protected $name;
   protected $userPHID;
@@ -570,6 +571,14 @@ final class PhabricatorCalendarEvent extends PhabricatorCalendarDAO
 
   public function getAuthor() {
     return $this->getUserPHID();
+  }
+
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+
+  public function newFulltextEngine() {
+    return new PhabricatorCalendarEventFulltextEngine();
   }
 
 }

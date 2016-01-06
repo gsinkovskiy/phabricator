@@ -81,6 +81,8 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
   const PROPERTY_JIRA_REJECT_TRANSITION = 'oauth1:jira:reject_transition';
   const PROPERTY_PUBLIC_KEY = 'oauth1:jira:key:public';
   const PROPERTY_PRIVATE_KEY = 'oauth1:jira:key:private';
+  const PROPERTY_REPORT_LINK = 'oauth1:jira:report:link';
+  const PROPERTY_REPORT_COMMENT = 'oauth1:jira:report:comment';
 
 
   public function readFormValuesFromProvider() {
@@ -112,6 +114,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
       self::PROPERTY_JIRA_REVIEW_TRANSITION => $request->getStr(self::PROPERTY_JIRA_REVIEW_TRANSITION),
       self::PROPERTY_JIRA_ACCEPT_TRANSITION => $request->getStr(self::PROPERTY_JIRA_ACCEPT_TRANSITION),
       self::PROPERTY_JIRA_REJECT_TRANSITION => $request->getStr(self::PROPERTY_JIRA_REJECT_TRANSITION),
+      self::PROPERTY_REPORT_LINK =>
+        $request->getInt(self::PROPERTY_REPORT_LINK, 0),
+      self::PROPERTY_REPORT_COMMENT =>
+        $request->getInt(self::PROPERTY_REPORT_COMMENT, 0),
     );
   }
 
@@ -191,7 +197,7 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
           "The PHP 'openssl' extension is not installed. You must install ".
           "this extension in order to add a JIRA authentication provider, ".
           "because JIRA OAuth requests use the RSA-SHA1 signing algorithm. ".
-          "Install the 'openssl' extension, restart your webserver, and try ".
+          "Install the 'openssl' extension, restart Phabricator, and try ".
           "again."));
     }
 
@@ -201,6 +207,7 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
         'JIRA 5 or earlier.'));
 
     $is_setup = $this->isSetup();
+    $viewer = $request->getViewer();
 
     $e_required = $request->isFormPost() ? null : true;
 
@@ -277,8 +284,37 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
           id(new AphrontFormStaticControl())
             ->setLabel(pht('Public Key'))
             ->setValue($pkey));
-    }
 
+      $form
+        ->appendRemarkupInstructions(
+          pht(
+            '= Integration Options = '."\n".
+            'Configure how to record Revisions on JIRA tasks.'."\n\n".
+            'Note you\'ll have to restart the daemons for this to take '.
+            'effect.'))
+        ->appendChild(
+          id(new AphrontFormCheckboxControl())
+            ->addCheckbox(
+              self::PROPERTY_REPORT_LINK,
+              1,
+              new PHUIRemarkupView(
+                $viewer,
+                pht(
+                  'Create **Issue Link** to the Revision, as an "implemented '.
+                  'in" relationship.')),
+              $this->shouldCreateJIRALink()))
+        ->appendChild(
+          id(new AphrontFormCheckboxControl())
+            ->addCheckbox(
+              self::PROPERTY_REPORT_COMMENT,
+              1,
+              new PHUIRemarkupView(
+                $viewer,
+                pht(
+                  '**Post a comment** in the JIRA task, similar to the '.
+                  'emails Phabricator sends.')),
+              $this->shouldCreateJIRAComment()));
+    }
   }
 
   private function addTransitionFields(
@@ -423,6 +459,16 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
     $adapter->setTokenSecret($account->getProperty('oauth1.token.secret'));
 
     return $adapter->newJIRAFuture($path, $method, $params);
+  }
+
+  public function shouldCreateJIRALink() {
+    $config = $this->getProviderConfig();
+    return $config->getProperty(self::PROPERTY_REPORT_LINK, true);
+  }
+
+  public function shouldCreateJIRAComment() {
+    $config = $this->getProviderConfig();
+    return $config->getProperty(self::PROPERTY_REPORT_COMMENT, true);
   }
 
 }

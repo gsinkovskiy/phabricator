@@ -12,7 +12,8 @@ final class PholioMock extends PholioDAO
     PhabricatorProjectInterface,
     PhabricatorDestructibleInterface,
     PhabricatorSpacesInterface,
-    PhabricatorMentionableInterface {
+    PhabricatorMentionableInterface,
+    PhabricatorFulltextInterface {
 
   const MARKUP_FIELD_DESCRIPTION  = 'markup:description';
 
@@ -328,5 +329,13 @@ final class PholioMock extends PholioDAO
   public function getAuthor() {
     return $this->getAuthorPHID();
   }
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+
+  public function newFulltextEngine() {
+    return new PholioMockFulltextEngine();
+  }
+
 
 }

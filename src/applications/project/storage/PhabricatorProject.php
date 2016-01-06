@@ -6,15 +6,16 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     PhabricatorFlaggableInterface,
     PhabricatorAuthorAwareInterface,
     PhabricatorPolicyInterface,
+    PhabricatorExtendedPolicyInterface,
     PhabricatorSubscribableInterface,
     PhabricatorCustomFieldInterface,
-    PhabricatorDestructibleInterface {
+    PhabricatorDestructibleInterface,
+    PhabricatorFulltextInterface {
 
   protected $name;
   protected $status = PhabricatorProjectStatus::STATUS_ACTIVE;
   protected $authorPHID;
-  protected $subprojectPHIDs = array();
-  protected $phrictionSlug;
+  protected $primarySlug;
   protected $profileImagePHID;
   protected $icon;
   protected $color;
@@ -25,6 +26,16 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   protected $joinPolicy;
   protected $isMembershipLocked;
 
+  protected $parentProjectPHID;
+  protected $hasWorkboard;
+  protected $hasMilestones;
+  protected $hasSubprojects;
+  protected $milestoneNumber;
+
+  protected $projectPath;
+  protected $projectDepth;
+  protected $projectPathKey;
+
   private $memberPHIDs = self::ATTACHABLE;
   private $watcherPHIDs = self::ATTACHABLE;
   private $sparseWatchers = self::ATTACHABLE;
@@ -32,6 +43,7 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   private $customFields = self::ATTACHABLE;
   private $profileImageFile = self::ATTACHABLE;
   private $slugs = self::ATTACHABLE;
+  private $parentProject = self::ATTACHABLE;
 
   const DEFAULT_ICON = 'fa-briefcase';
   const DEFAULT_COLOR = 'blue';
@@ -60,7 +72,11 @@ final class PhabricatorProject extends PhabricatorProjectDAO
       ->setJoinPolicy($join_policy)
       ->setIsMembershipLocked(0)
       ->attachMemberPHIDs(array())
-      ->attachSlugs(array());
+      ->attachSlugs(array())
+      ->setHasWorkboard(0)
+      ->setHasMilestones(0)
+      ->setHasSubprojects(0)
+      ->attachParentProject(null);
   }
 
   public function getCapabilities() {
@@ -83,6 +99,7 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   }
 
   public function hasAutomaticCapability($capability, PhabricatorUser $viewer) {
+    $can_edit = PhabricatorPolicyCapability::CAN_EDIT;
 
     switch ($capability) {
       case PhabricatorPolicyCapability::CAN_VIEW:
@@ -92,9 +109,18 @@ final class PhabricatorProject extends PhabricatorProjectDAO
         }
         break;
       case PhabricatorPolicyCapability::CAN_EDIT:
+        $parent = $this->getParentProject();
+        if ($parent) {
+          $can_edit_parent = PhabricatorPolicyFilter::hasCapability(
+            $viewer,
+            $parent,
+            $can_edit);
+          if ($can_edit_parent) {
+            return true;
+          }
+        }
         break;
       case PhabricatorPolicyCapability::CAN_JOIN:
-        $can_edit = PhabricatorPolicyCapability::CAN_EDIT;
         if (PhabricatorPolicyFilter::hasCapability($viewer, $this, $can_edit)) {
           // Project editors can always join a project.
           return true;
@@ -106,6 +132,9 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   }
 
   public function describeAutomaticCapability($capability) {
+
+    // TODO: Clarify the additional rules that parent and subprojects imply.
+
     switch ($capability) {
       case PhabricatorPolicyCapability::CAN_VIEW:
         return pht('Members of a project can always view it.');
@@ -114,6 +143,25 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     }
     return null;
   }
+
+  public function getExtendedPolicy($capability, PhabricatorUser $viewer) {
+    $extended = array();
+
+    switch ($capability) {
+      case PhabricatorPolicyCapability::CAN_VIEW:
+        $parent = $this->getParentProject();
+        if ($parent) {
+          $extended[] = array(
+            $parent,
+            PhabricatorPolicyCapability::CAN_VIEW,
+          );
+        }
+        break;
+    }
+
+    return $extended;
+  }
+
 
   public function isUserMember($user_phid) {
     if ($this->memberPHIDs !== self::ATTACHABLE) {
@@ -133,24 +181,24 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   protected function getConfiguration() {
     return array(
       self::CONFIG_AUX_PHID => true,
-      self::CONFIG_SERIALIZATION => array(
-        'subprojectPHIDs' => self::SERIALIZATION_JSON,
-      ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'name' => 'sort128',
         'status' => 'text32',
-        'phrictionSlug' => 'text128?',
+        'primarySlug' => 'text128?',
         'isMembershipLocked' => 'bool',
         'profileImagePHID' => 'phid?',
         'icon' => 'text32',
         'color' => 'text32',
         'mailKey' => 'bytes20',
-
-        // T6203/NULLABILITY
-        // These are definitely wrong and should always exist.
-        'editPolicy' => 'policy?',
-        'viewPolicy' => 'policy?',
-        'joinPolicy' => 'policy?',
+        'joinPolicy' => 'policy',
+        'parentProjectPHID' => 'phid?',
+        'hasWorkboard' => 'bool',
+        'hasMilestones' => 'bool',
+        'hasSubprojects' => 'bool',
+        'milestoneNumber' => 'uint32?',
+        'projectPath' => 'hashpath64',
+        'projectDepth' => 'uint32',
+        'projectPathKey' => 'bytes4',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'key_phid' => null,
@@ -164,12 +212,23 @@ final class PhabricatorProject extends PhabricatorProjectDAO
         'key_color' => array(
           'columns' => array('color'),
         ),
-        'phrictionSlug' => array(
-          'columns' => array('phrictionSlug'),
-          'unique' => true,
-        ),
         'name' => array(
           'columns' => array('name'),
+          'unique' => true,
+        ),
+        'key_milestone' => array(
+          'columns' => array('parentProjectPHID', 'milestoneNumber'),
+          'unique' => true,
+        ),
+        'key_primaryslug' => array(
+          'columns' => array('primarySlug'),
+          'unique' => true,
+        ),
+        'key_path' => array(
+          'columns' => array('projectPath', 'projectDepth'),
+        ),
+        'key_pathkey' => array(
+          'columns' => array('projectPathKey'),
           'unique' => true,
         ),
       ),
@@ -188,32 +247,6 @@ final class PhabricatorProject extends PhabricatorProjectDAO
 
   public function getMemberPHIDs() {
     return $this->assertAttached($this->memberPHIDs);
-  }
-
-  public function setPhrictionSlug($slug) {
-
-    // NOTE: We're doing a little magic here and stripping out '/' so that
-    // project pages always appear at top level under projects/ even if the
-    // display name is "Hack / Slash" or similar (it will become
-    // 'hack_slash' instead of 'hack/slash').
-
-    $slug = str_replace('/', ' ', $slug);
-    $slug = PhabricatorSlug::normalize($slug);
-    $this->phrictionSlug = $slug;
-    return $this;
-  }
-
-  public function getFullPhrictionSlug() {
-    $slug = $this->getPhrictionSlug();
-    return 'projects/'.$slug;
-  }
-
-  // TODO - once we sever project => phriction automagicalness,
-  // migrate getPhrictionSlug to have no trailing slash and be called
-  // getPrimarySlug
-  public function getPrimarySlug() {
-    $slug = $this->getPhrictionSlug();
-    return rtrim($slug, '/');
   }
 
   public function isArchived() {
@@ -280,12 +313,46 @@ final class PhabricatorProject extends PhabricatorProjectDAO
       $this->setMailKey(Filesystem::readRandomCharacters(20));
     }
 
+    if (!strlen($this->getPHID())) {
+      $this->setPHID($this->generatePHID());
+    }
+
+    if (!strlen($this->getProjectPathKey())) {
+      $hash = PhabricatorHash::digestForIndex($this->getPHID());
+      $hash = substr($hash, 0, 4);
+      $this->setProjectPathKey($hash);
+    }
+
+    $path = array();
+    $depth = 0;
+    if ($this->parentProjectPHID) {
+      $parent = $this->getParentProject();
+      $path[] = $parent->getProjectPath();
+      $depth = $parent->getProjectDepth() + 1;
+    }
+    $path[] = $this->getProjectPathKey();
+    $path = implode('', $path);
+
+    $limit = self::getProjectDepthLimit();
+    if ($depth >= $limit) {
+      throw new Exception(pht('Project depth is too great.'));
+    }
+
+    $this->setProjectPath($path);
+    $this->setProjectDepth($depth);
+
     $this->openTransaction();
       $result = parent::save();
       $this->updateDatasourceTokens();
     $this->saveTransaction();
 
     return $result;
+  }
+
+  public static function getProjectDepthLimit() {
+    // This is limited by how many path hashes we can fit in the path
+    // column.
+    return 16;
   }
 
   public function updateDatasourceTokens() {
@@ -325,6 +392,44 @@ final class PhabricatorProject extends PhabricatorProjectDAO
           $chunk);
       }
     $this->saveTransaction();
+  }
+
+  public function isMilestone() {
+    return ($this->getMilestoneNumber() !== null);
+  }
+
+  public function getParentProject() {
+    return $this->assertAttached($this->parentProject);
+  }
+
+  public function attachParentProject(PhabricatorProject $project = null) {
+    $this->parentProject = $project;
+    return $this;
+  }
+
+  public function getAncestorProjectPaths() {
+    $parts = array();
+
+    $path = $this->getProjectPath();
+    $parent_length = (strlen($path) - 4);
+
+    for ($ii = $parent_length; $ii > 0; $ii -= 4) {
+      $parts[] = substr($path, 0, $ii);
+    }
+
+    return $parts;
+  }
+
+  public function getAncestorProjects() {
+    $ancestors = array();
+
+    $cursor = $this->getParentProject();
+    while ($cursor) {
+      $ancestors[] = $cursor;
+      $cursor = $cursor->getParentProject();
+    }
+
+    return $ancestors;
   }
 
 
@@ -391,6 +496,7 @@ final class PhabricatorProject extends PhabricatorProjectDAO
 
 /* -(  PhabricatorDestructibleInterface  )----------------------------------- */
 
+
   public function destroyObjectPermanently(
     PhabricatorDestructionEngine $engine) {
 
@@ -418,6 +524,14 @@ final class PhabricatorProject extends PhabricatorProjectDAO
 
   public function getAuthor() {
     return $this->getAuthorPHID();
+  }
+
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+
+  public function newFulltextEngine() {
+    return new PhabricatorProjectFulltextEngine();
   }
 
 }

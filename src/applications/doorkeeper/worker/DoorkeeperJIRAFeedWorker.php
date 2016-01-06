@@ -96,6 +96,10 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     PhabricatorExternalAccount $account,
     DoorkeeperExternalObject $xobj) {
 
+    if (!$this->shouldPostLink()) {
+      return;
+    }
+
     $object = $this->getStoryObject();
     $publisher = $this->getPublisher();
     $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
@@ -145,6 +149,10 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     PhabricatorExternalAccount $account,
     DoorkeeperExternalObject $xobj,
     $story_text) {
+
+    if (!$this->shouldPostComment()) {
+      return;
+    }
 
     try {
       $this->getProvider()->newJIRAFuture(
@@ -322,14 +330,26 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     return $try_users;
   }
 
+  private function shouldPostComment() {
+    return $this->getProvider()->shouldCreateJIRAComment();
+  }
+
+  private function shouldPostLink() {
+    return $this->getProvider()->shouldCreateJIRALink();
+  }
+
   private function renderStoryText() {
     $object = $this->getStoryObject();
     $publisher = $this->getPublisher();
 
     $text = $publisher->getStoryText($object);
-    $uri = $publisher->getObjectURI($object);
 
-    return $text."\n\n".$uri;
+    if ($this->shouldPostLink()) {
+      return $text;
+    } else {
+      // include the link in the comment
+      return $text."\n\n".$publisher->getObjectURI($object);
+    }
   }
 
 }
