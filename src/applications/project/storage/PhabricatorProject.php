@@ -6,11 +6,11 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     PhabricatorFlaggableInterface,
     PhabricatorPolicyInterface,
     PhabricatorExtendedPolicyInterface,
-    PhabricatorSubscribableInterface,
     PhabricatorCustomFieldInterface,
     PhabricatorDestructibleInterface,
     PhabricatorFulltextInterface,
-    PhabricatorConduitResultInterface {
+    PhabricatorConduitResultInterface,
+    PhabricatorColumnProxyInterface {
 
   protected $name;
   protected $status = PhabricatorProjectStatus::STATUS_ACTIVE;
@@ -36,6 +36,8 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   protected $projectDepth;
   protected $projectPathKey;
 
+  protected $properties = array();
+
   private $memberPHIDs = self::ATTACHABLE;
   private $watcherPHIDs = self::ATTACHABLE;
   private $sparseWatchers = self::ATTACHABLE;
@@ -45,10 +47,15 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   private $slugs = self::ATTACHABLE;
   private $parentProject = self::ATTACHABLE;
 
-  const DEFAULT_ICON = 'fa-briefcase';
-  const DEFAULT_COLOR = 'blue';
-
   const TABLE_DATASOURCE_TOKEN = 'project_datasourcetoken';
+
+  const PANEL_PROFILE = 'project.profile';
+  const PANEL_POINTS = 'project.points';
+  const PANEL_WORKBOARD = 'project.workboard';
+  const PANEL_MEMBERS = 'project.members';
+  const PANEL_MANAGE = 'project.manage';
+  const PANEL_MILESTONES = 'project.milestones';
+  const PANEL_SUBPROJECTS = 'project.subprojects';
 
   public static function initializeNewProject(PhabricatorUser $actor) {
     $app = id(new PhabricatorApplicationQuery())
@@ -63,10 +70,13 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     $join_policy = $app->getPolicy(
       ProjectDefaultJoinCapability::CAPABILITY);
 
+    $default_icon = PhabricatorProjectIconSet::getDefaultIconKey();
+    $default_color = PhabricatorProjectIconSet::getDefaultColorKey();
+
     return id(new PhabricatorProject())
       ->setAuthorPHID($actor->getPHID())
-      ->setIcon(self::DEFAULT_ICON)
-      ->setColor(self::DEFAULT_COLOR)
+      ->setIcon($default_icon)
+      ->setColor($default_color)
       ->setViewPolicy($view_policy)
       ->setEditPolicy($edit_policy)
       ->setJoinPolicy($join_policy)
@@ -172,7 +182,6 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     return $extended;
   }
 
-
   public function isUserMember($user_phid) {
     if ($this->memberPHIDs !== self::ATTACHABLE) {
       return in_array($user_phid, $this->memberPHIDs);
@@ -191,6 +200,9 @@ final class PhabricatorProject extends PhabricatorProjectDAO
   protected function getConfiguration() {
     return array(
       self::CONFIG_AUX_PHID => true,
+      self::CONFIG_SERIALIZATION => array(
+        'properties' => self::SERIALIZATION_JSON,
+      ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'name' => 'sort128',
         'status' => 'text32',
@@ -275,6 +287,32 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     return $this->assertAttachedKey($this->sparseWatchers, $user_phid);
   }
 
+  public function isUserAncestorWatcher($user_phid) {
+    $is_watcher = $this->isUserWatcher($user_phid);
+
+    if (!$is_watcher) {
+      $parent = $this->getParentProject();
+      if ($parent) {
+        return $parent->isUserWatcher($user_phid);
+      }
+    }
+
+    return $is_watcher;
+  }
+
+  public function getWatchedAncestorPHID($user_phid) {
+    if ($this->isUserWatcher($user_phid)) {
+      return $this->getPHID();
+    }
+
+    $parent = $this->getParentProject();
+    if ($parent) {
+      return $parent->getWatchedAncestorPHID($user_phid);
+    }
+
+    return null;
+  }
+
   public function setIsUserWatcher($user_phid, $is_watcher) {
     if ($this->sparseWatchers === self::ATTACHABLE) {
       $this->sparseWatchers = array();
@@ -290,6 +328,21 @@ final class PhabricatorProject extends PhabricatorProjectDAO
 
   public function getWatcherPHIDs() {
     return $this->assertAttached($this->watcherPHIDs);
+  }
+
+  public function getAllAncestorWatcherPHIDs() {
+    $parent = $this->getParentProject();
+    if ($parent) {
+      $watchers = $parent->getAllAncestorWatcherPHIDs();
+    } else {
+      $watchers = array();
+    }
+
+    foreach ($this->getWatcherPHIDs() as $phid) {
+      $watchers[$phid] = $phid;
+    }
+
+    return $watchers;
   }
 
   public function attachSlugs(array $slugs) {
@@ -373,7 +426,7 @@ final class PhabricatorProject extends PhabricatorProjectDAO
       $this->getPHID());
 
     $all_strings = ipull($slugs, 'slug');
-    $all_strings[] = $this->getName();
+    $all_strings[] = $this->getDisplayName();
     $all_strings = implode(' ', $all_strings);
 
     $tokens = PhabricatorTypeaheadDatasource::tokenizeString($all_strings);
@@ -484,37 +537,112 @@ final class PhabricatorProject extends PhabricatorProjectDAO
     return $number;
   }
 
-  public function getDisplayIcon() {
+  public function getDisplayName() {
+    $name = $this->getName();
+
+    // If this is a milestone, show it as "Parent > Sprint 99".
     if ($this->isMilestone()) {
-      return 'fa-map-marker';
+      $name = pht(
+        '%s (%s)',
+        $this->getParentProject()->getName(),
+        $name);
     }
 
-    return $this->getIcon();
+    return $name;
+  }
+
+  public function getDisplayIconKey() {
+    if ($this->isMilestone()) {
+      $key = PhabricatorProjectIconSet::getMilestoneIconKey();
+    } else {
+      $key = $this->getIcon();
+    }
+
+    return $key;
+  }
+
+  public function getDisplayIconIcon() {
+    $key = $this->getDisplayIconKey();
+    return PhabricatorProjectIconSet::getIconIcon($key);
+  }
+
+  public function getDisplayIconName() {
+    $key = $this->getDisplayIconKey();
+    return PhabricatorProjectIconSet::getIconName($key);
   }
 
   public function getDisplayColor() {
     if ($this->isMilestone()) {
-      return self::DEFAULT_COLOR;
+      return PhabricatorProjectIconSet::getDefaultColorKey();
     }
 
     return $this->getColor();
   }
 
-
-/* -(  PhabricatorSubscribableInterface  )----------------------------------- */
-
-
-  public function isAutomaticallySubscribed($phid) {
-    return false;
+  public function getDisplayIconComposeIcon() {
+    $icon = $this->getDisplayIconIcon();
+    return $icon;
   }
 
-  public function shouldShowSubscribersProperty() {
-    return false;
+  public function getDisplayIconComposeColor() {
+    $color = $this->getDisplayColor();
+
+    $map = array(
+      'grey' => 'charcoal',
+      'checkered' => 'backdrop',
+    );
+
+    return idx($map, $color, $color);
   }
 
-  public function shouldAllowSubscription($phid) {
-    return $this->isUserMember($phid) &&
-           !$this->isUserWatcher($phid);
+  public function getProperty($key, $default = null) {
+    return idx($this->properties, $key, $default);
+  }
+
+  public function setProperty($key, $value) {
+    $this->properties[$key] = $value;
+    return $this;
+  }
+
+  public function getDefaultWorkboardSort() {
+    return $this->getProperty('workboard.sort.default');
+  }
+
+  public function setDefaultWorkboardSort($sort) {
+    return $this->setProperty('workboard.sort.default', $sort);
+  }
+
+  public function getDefaultWorkboardFilter() {
+    return $this->getProperty('workboard.filter.default');
+  }
+
+  public function setDefaultWorkboardFilter($filter) {
+    return $this->setProperty('workboard.filter.default', $filter);
+  }
+
+  public function getWorkboardBackgroundColor() {
+    return $this->getProperty('workboard.background');
+  }
+
+  public function setWorkboardBackgroundColor($color) {
+    return $this->setProperty('workboard.background', $color);
+  }
+
+  public function getDisplayWorkboardBackgroundColor() {
+    $color = $this->getWorkboardBackgroundColor();
+
+    if ($color === null) {
+      $parent = $this->getParentProject();
+      if ($parent) {
+        return $parent->getDisplayWorkboardBackgroundColor();
+      }
+    }
+
+    if ($color === 'none') {
+      $color = null;
+    }
+
+    return $color;
   }
 
 
@@ -608,18 +736,64 @@ final class PhabricatorProject extends PhabricatorProjectDAO
         ->setKey('slug')
         ->setType('string')
         ->setDescription(pht('Primary slug/hashtag.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('icon')
+        ->setType('map<string, wild>')
+        ->setDescription(pht('Information about the project icon.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('color')
+        ->setType('map<string, wild>')
+        ->setDescription(pht('Information about the project color.')),
     );
   }
 
   public function getFieldValuesForConduit() {
+    $color_key = $this->getColor();
+    $color_name = PhabricatorProjectIconSet::getColorName($color_key);
+
     return array(
       'name' => $this->getName(),
       'slug' => $this->getPrimarySlug(),
+      'icon' => array(
+        'key' => $this->getDisplayIconKey(),
+        'name' => $this->getDisplayIconName(),
+        'icon' => $this->getDisplayIconIcon(),
+      ),
+      'color' => array(
+        'key' => $color_key,
+        'name' => $color_name,
+      ),
     );
   }
 
   public function getConduitSearchAttachments() {
-    return array();
+    return array(
+      id(new PhabricatorProjectsMembersSearchEngineAttachment())
+        ->setAttachmentKey('members'),
+      id(new PhabricatorProjectsWatchersSearchEngineAttachment())
+        ->setAttachmentKey('watchers'),
+    );
   }
+
+
+/* -(  PhabricatorColumnProxyInterface  )------------------------------------ */
+
+
+  public function getProxyColumnName() {
+    return $this->getName();
+  }
+
+  public function getProxyColumnIcon() {
+    return $this->getDisplayIconIcon();
+  }
+
+  public function getProxyColumnClass() {
+    if ($this->isMilestone()) {
+      return 'phui-workboard-column-milestone';
+    }
+
+    return null;
+  }
+
 
 }

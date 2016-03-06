@@ -129,7 +129,46 @@ final class PhabricatorStartup {
 
     self::beginOutputCapture();
 
-    self::$rawInput = (string)file_get_contents('php://input');
+    if (isset($_SERVER['HTTP_CONTENT_ENCODING'])) {
+      $encoding = trim($_SERVER['HTTP_CONTENT_ENCODING']);
+    } else {
+      $encoding = null;
+    }
+
+    $input_stream = fopen('php://input', 'rb');
+    if (!$input_stream) {
+      self::didFatal(
+        'Unable to open "php://input" to read HTTP request body.');
+    }
+
+    if ($encoding === 'gzip') {
+      $ok = stream_filter_append(
+        $input_stream,
+        'zlib.inflate',
+        STREAM_FILTER_READ,
+        array(
+          'window' => 30,
+        ));
+
+      if (!$ok) {
+        self::didFatal(
+          'Failed to append gzip inflate filter to HTTP request body input '.
+          'stream.');
+      }
+    }
+
+    $input_data = '';
+    while (!feof($input_stream)) {
+      $read_bytes = fread($input_stream, 16 * 1024);
+      if ($read_bytes === false) {
+        self::didFatal(
+          'Failed to read input bytes from HTTP request body.');
+      }
+      $input_data .= $read_bytes;
+    }
+    fclose($input_stream);
+
+    self::$rawInput = $input_data;
   }
 
 

@@ -136,11 +136,7 @@ final class PhortuneMerchantViewController
 
     $description = $merchant->getDescription();
     if (strlen($description)) {
-      $description = PhabricatorMarkupEngine::renderOneObject(
-        id(new PhabricatorMarkupOneOff())->setContent($description),
-        'default',
-        $viewer);
-
+      $description = new PHUIRemarkupView($viewer, $description);
       $view->addSectionHeader(
         pht('Description'), PHUIPropertyListView::ICON_SUMMARY);
       $view->addTextContent($description);
@@ -279,7 +275,7 @@ final class PhortuneMerchantViewController
       ->setText(pht('Add Payment Provider'))
       ->setDisabled(!$can_edit)
       ->setWorkflow(!$can_edit)
-      ->setIcon(id(new PHUIIconView())->setIconFont('fa-plus'));
+      ->setIcon('fa-plus');
 
     $header = id(new PHUIHeaderView())
       ->setHeader(pht('Payment Providers'))

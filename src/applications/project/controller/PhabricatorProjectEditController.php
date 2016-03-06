@@ -24,6 +24,11 @@ final class PhabricatorProjectEditController
 
     $id = $request->getURIData('id');
     if (!$id) {
+      // This capability is checked again later, but checking it here
+      // explicitly gives us a better error message.
+      $this->requireApplicationCapability(
+        ProjectCreateProjectsCapability::CAPABILITY);
+
       $parent_id = head($request->getArr('parent'));
       if (!$parent_id) {
         $parent_id = $request->getStr('parent');
@@ -42,6 +47,7 @@ final class PhabricatorProjectEditController
       if ($parent_id) {
         $query = id(new PhabricatorProjectQuery())
           ->setViewer($viewer)
+          ->needImages(true)
           ->requireCapabilities(
             array(
               PhabricatorPolicyCapability::CAN_VIEW,
@@ -58,7 +64,7 @@ final class PhabricatorProjectEditController
 
         if ($is_milestone) {
           if (!$parent->supportsMilestones()) {
-            $cancel_uri = "/project/milestones/{$parent_id}/";
+            $cancel_uri = "/project/subprojects/{$parent_id}/";
             return $this->newDialog()
               ->setTitle(pht('No Milestones'))
               ->appendParagraph(
@@ -91,19 +97,12 @@ final class PhabricatorProjectEditController
     $engine = $this->getEngine();
     if ($engine) {
       $parent = $engine->getParentProject();
-      if ($parent) {
-        $id = $parent->getID();
+      $milestone = $engine->getMilestoneProject();
+      if ($parent || $milestone) {
+        $id = nonempty($parent, $milestone)->getID();
         $crumbs->addTextCrumb(
           pht('Subprojects'),
           $this->getApplicationURI("subprojects/{$id}/"));
-      }
-
-      $milestone = $engine->getMilestoneProject();
-      if ($milestone) {
-        $id = $milestone->getID();
-        $crumbs->addTextCrumb(
-          pht('Milestones'),
-          $this->getApplicationURI("milestones/{$id}/"));
       }
     }
 

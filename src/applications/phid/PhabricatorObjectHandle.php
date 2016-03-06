@@ -27,6 +27,8 @@ final class PhabricatorObjectHandle
   private $complete;
   private $objectName;
   private $policyFiltered;
+  private $subtitle;
+  private $tokenIcon;
 
   public function setIcon($icon) {
     $this->icon = $icon;
@@ -42,6 +44,15 @@ final class PhabricatorObjectHandle
       return $this->icon;
     }
     return $this->getTypeIcon();
+  }
+
+  public function setSubtitle($subtitle) {
+    $this->subtitle = $subtitle;
+    return $this;
+  }
+
+  public function getSubtitle() {
+    return $this->subtitle;
   }
 
   public function setTagColor($color) {
@@ -74,6 +85,19 @@ final class PhabricatorObjectHandle
       return $this->tagColor;
     }
     return null;
+  }
+
+  public function setTokenIcon($icon) {
+    $this->tokenIcon = $icon;
+    return $this;
+  }
+
+  public function getTokenIcon() {
+    if ($this->tokenIcon !== null) {
+      return $this->tokenIcon;
+    }
+
+    return $this->getIcon();
   }
 
   public function getTypeIcon() {
@@ -252,7 +276,7 @@ final class PhabricatorObjectHandle
   }
 
   public function renderHovercardLink($name = null) {
-    Javelin::initBehavior('phabricator-hovercards');
+    Javelin::initBehavior('phui-hovercards');
 
     $attributes = array(
       'sigil' => 'hovercard',
@@ -289,7 +313,7 @@ final class PhabricatorObjectHandle
     $icon = null;
     if ($this->getPolicyFiltered()) {
       $icon = id(new PHUIIconView())
-        ->setIconFont('fa-lock lightgreytext');
+        ->setIcon('fa-lock lightgreytext');
     }
 
     $attributes = $attributes + array(

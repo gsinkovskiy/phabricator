@@ -64,6 +64,20 @@ abstract class DiffusionController extends PhabricatorController {
       return new Aphront404Response();
     }
 
+    // If the client is making a request like "/diffusion/1/...", but the
+    // repository has a different canonical path like "/diffusion/XYZ/...",
+    // redirect them to the canonical path.
+
+    $request_path = $request->getPath();
+    $repository = $drequest->getRepository();
+
+    $canonical_path = $repository->getCanonicalPath($request_path);
+    if ($canonical_path !== null) {
+      if ($canonical_path != $request_path) {
+        return id(new AphrontRedirectResponse())->setURI($canonical_path);
+      }
+    }
+
     $this->diffusionRequest = $drequest;
 
     return null;
@@ -147,7 +161,7 @@ abstract class DiffusionController extends PhabricatorController {
     $crumb_list[] = $crumb;
 
     $stable_commit = $drequest->getStableCommit();
-    $commit_name = $repository->formatCommitName($stable_commit);
+    $commit_name = $repository->formatCommitName($stable_commit, $local = true);
     $commit_uri = $repository->getCommitURI($stable_commit);
 
     if ($spec['tags']) {
@@ -171,8 +185,7 @@ abstract class DiffusionController extends PhabricatorController {
 
     if ($spec['commit']) {
       $crumb = id(new PHUICrumbView())
-        ->setName($commit_name)
-        ->setHref($commit_uri);
+        ->setName($commit_name);
       $crumb_list[] = $crumb;
       return $crumb_list;
     }
@@ -285,6 +298,51 @@ abstract class DiffusionController extends PhabricatorController {
     return id(new PHUIBoxView())
       ->addMargin(PHUI::MARGIN_LARGE)
       ->appendChild($pager);
+  }
+
+  protected function renderDirectoryReadme(DiffusionBrowseResultSet $browse) {
+    $readme_path = $browse->getReadmePath();
+    if ($readme_path === null) {
+      return null;
+    }
+
+    $drequest = $this->getDiffusionRequest();
+    $viewer = $this->getViewer();
+
+    try {
+      $result = $this->callConduitWithDiffusionRequest(
+        'diffusion.filecontentquery',
+        array(
+          'path' => $readme_path,
+          'commit' => $drequest->getStableCommit(),
+        ));
+    } catch (Exception $ex) {
+      return null;
+    }
+
+    $file_phid = $result['filePHID'];
+    if (!$file_phid) {
+      return null;
+    }
+
+    $file = id(new PhabricatorFileQuery())
+      ->setViewer($viewer)
+      ->withPHIDs(array($file_phid))
+      ->executeOne();
+    if (!$file) {
+      return null;
+    }
+
+    $corpus = $file->loadFileData();
+
+    if (!strlen($corpus)) {
+      return null;
+    }
+
+    return id(new DiffusionReadmeView())
+      ->setUser($this->getViewer())
+      ->setPath($readme_path)
+      ->setContent($corpus);
   }
 
 }

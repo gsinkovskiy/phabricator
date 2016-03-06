@@ -155,7 +155,7 @@ abstract class PhabricatorApplication
     return null;
   }
 
-  public function getFontIcon() {
+  public function getIcon() {
     return 'fa-puzzle-piece';
   }
 
@@ -633,6 +633,22 @@ abstract class PhabricatorApplication
 
   protected function getQueryRoutePattern($base = null) {
     return $base.'(?:query/(?P<queryKey>[^/]+)/)?';
+  }
+
+  protected function getPanelRouting($controller) {
+    $edit_route = $this->getEditRoutePattern();
+
+    return array(
+      '(?P<panelAction>view)/(?P<panelID>[^/]+)/' => $controller,
+      '(?P<panelAction>hide)/(?P<panelID>[^/]+)/' => $controller,
+      '(?P<panelAction>default)/(?P<panelID>[^/]+)/' => $controller,
+      '(?P<panelAction>configure)/' => $controller,
+      '(?P<panelAction>reorder)/' => $controller,
+      '(?P<panelAction>edit)/'.$edit_route => $controller,
+      '(?P<panelAction>new)/(?<panelKey>[^/]+)/'.$edit_route => $controller,
+      '(?P<panelAction>builtin)/(?<panelID>[^/]+)/'.$edit_route
+        => $controller,
+    );
   }
 
 }

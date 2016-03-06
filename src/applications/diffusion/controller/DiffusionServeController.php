@@ -2,6 +2,27 @@
 
 final class DiffusionServeController extends DiffusionController {
 
+  private $serviceViewer;
+  private $serviceRepository;
+
+  public function setServiceViewer(PhabricatorUser $viewer) {
+    $this->serviceViewer = $viewer;
+    return $this;
+  }
+
+  public function getServiceViewer() {
+    return $this->serviceViewer;
+  }
+
+  public function setServiceRepository(PhabricatorRepository $repository) {
+    $this->serviceRepository = $repository;
+    return $this;
+  }
+
+  public function getServiceRepository() {
+    return $this->serviceRepository;
+  }
+
   public function isVCSRequest(AphrontRequest $request) {
     $identifier = $this->getRepositoryIdentifierFromRequest($request);
     if ($identifier === null) {
@@ -45,6 +66,74 @@ final class DiffusionServeController extends DiffusionController {
   }
 
   public function handleRequest(AphrontRequest $request) {
+    $service_exception = null;
+    $response = null;
+
+    try {
+      $response = $this->serveRequest($request);
+    } catch (Exception $ex) {
+      $service_exception = $ex;
+    }
+
+    try {
+      $remote_addr = $request->getRemoteAddress();
+
+      $pull_event = id(new PhabricatorRepositoryPullEvent())
+        ->setEpoch(PhabricatorTime::getNow())
+        ->setRemoteAddress($remote_addr)
+        ->setRemoteProtocol('http');
+
+      if ($response) {
+        $pull_event
+          ->setResultType('wild')
+          ->setResultCode($response->getHTTPResponseCode());
+
+        if ($response instanceof PhabricatorVCSResponse) {
+          $pull_event->setProperties(
+            array(
+              'response.message' => $response->getMessage(),
+            ));
+        }
+      } else {
+        $pull_event
+          ->setResultType('exception')
+          ->setResultCode(500)
+          ->setProperties(
+            array(
+              'exception.class' => get_class($ex),
+              'exception.message' => $ex->getMessage(),
+            ));
+      }
+
+      $viewer = $this->getServiceViewer();
+      if ($viewer) {
+        $pull_event->setPullerPHID($viewer->getPHID());
+      }
+
+      $repository = $this->getServiceRepository();
+      if ($repository) {
+        $pull_event->setRepositoryPHID($repository->getPHID());
+      }
+
+      $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
+        $pull_event->save();
+      unset($unguarded);
+
+    } catch (Exception $ex) {
+      if ($service_exception) {
+        throw $service_exception;
+      }
+      throw $ex;
+    }
+
+    if ($service_exception) {
+      throw $service_exception;
+    }
+
+    return $response;
+  }
+
+  private function serveRequest(AphrontRequest $request) {
     $identifier = $this->getRepositoryIdentifierFromRequest($request);
 
     // If authentication credentials have been provided, try to find a user
@@ -64,6 +153,8 @@ final class DiffusionServeController extends DiffusionController {
       // being "not logged in".
       $viewer = new PhabricatorUser();
     }
+
+    $this->setServiceViewer($viewer);
 
     $allow_public = PhabricatorEnv::getEnvConfig('policy.allow-public');
     $allow_auth = PhabricatorEnv::getEnvConfig('diffusion.allow-http-auth');
@@ -110,6 +201,8 @@ final class DiffusionServeController extends DiffusionController {
         }
       }
     }
+
+    $this->setServiceRepository($repository);
 
     if (!$repository->isTracked()) {
       return new PhabricatorVCSResponse(
@@ -169,17 +262,23 @@ final class DiffusionServeController extends DiffusionController {
         case PhabricatorRepositoryType::REPOSITORY_TYPE_GIT:
           $result = new PhabricatorVCSResponse(
             500,
-            pht('This is not a Git repository.'));
+            pht(
+              'This repository ("%s") is not a Git repository.',
+              $repository->getDisplayName()));
           break;
         case PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL:
           $result = new PhabricatorVCSResponse(
             500,
-            pht('This is not a Mercurial repository.'));
+            pht(
+              'This repository ("%s") is not a Mercurial repository.',
+              $repository->getDisplayName()));
           break;
         case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
           $result = new PhabricatorVCSResponse(
             500,
-            pht('This is not a Subversion repository.'));
+            pht(
+              'This repository ("%s") is not a Subversion repository.',
+              $repository->getDisplayName()));
           break;
         default:
           $result = new PhabricatorVCSResponse(
@@ -334,11 +433,14 @@ final class DiffusionServeController extends DiffusionController {
           '$PATH'));
     }
 
+    // NOTE: We do not set HTTP_CONTENT_ENCODING here, because we already
+    // decompressed the request when we read the request body, so the body is
+    // just plain data with no encoding.
+
     $env = array(
       'REQUEST_METHOD' => $_SERVER['REQUEST_METHOD'],
       'QUERY_STRING' => $query_string,
       'CONTENT_TYPE' => $request->getHTTPHeader('Content-Type'),
-      'HTTP_CONTENT_ENCODING' => $request->getHTTPHeader('Content-Encoding'),
       'REMOTE_ADDR' => $_SERVER['REMOTE_ADDR'],
       'GIT_PROJECT_ROOT' => $repository_root,
       'GIT_HTTP_EXPORT_ALL' => '1',
@@ -372,7 +474,10 @@ final class DiffusionServeController extends DiffusionController {
     if ($err) {
       return new PhabricatorVCSResponse(
         500,
-        pht('Error %d: %s', $err, $stderr));
+        pht(
+          'Error %d: %s',
+          $err,
+          phutil_utf8ize($stderr)));
     }
 
     return id(new DiffusionGitResponse())->setGitData($stdout);
@@ -381,7 +486,9 @@ final class DiffusionServeController extends DiffusionController {
   private function getRequestDirectoryPath(PhabricatorRepository $repository) {
     $request = $this->getRequest();
     $request_path = $request->getRequestURI()->getPath();
-    $base_path = preg_replace('@^/diffusion/[A-Z]+@', '', $request_path);
+
+    $info = PhabricatorRepository::parseRepositoryServicePath($request_path);
+    $base_path = $info['path'];
 
     // For Git repositories, strip an optional directory component if it
     // isn't the name of a known Git resource. This allows users to clone
@@ -623,11 +730,11 @@ final class DiffusionServeController extends DiffusionController {
   }
 
   private function getCommonEnvironment(PhabricatorUser $viewer) {
-    $remote_addr = $this->getRequest()->getRemoteAddr();
+    $remote_address = $this->getRequest()->getRemoteAddress();
 
     return array(
       DiffusionCommitHookEngine::ENV_USER => $viewer->getUsername(),
-      DiffusionCommitHookEngine::ENV_REMOTE_ADDRESS => $remote_addr,
+      DiffusionCommitHookEngine::ENV_REMOTE_ADDRESS => $remote_address,
       DiffusionCommitHookEngine::ENV_REMOTE_PROTOCOL => 'http',
     );
   }

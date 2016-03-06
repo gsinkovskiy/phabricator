@@ -26,6 +26,10 @@ final class PhabricatorProjectSearchEngine
         ->setLabel(pht('Members'))
         ->setKey('memberPHIDs')
         ->setAliases(array('member', 'members')),
+      id(new PhabricatorUsersSearchField())
+        ->setLabel(pht('Watchers'))
+        ->setKey('watcherPHIDs')
+        ->setAliases(array('watcher', 'watchers')),
       id(new PhabricatorSearchSelectField())
         ->setLabel(pht('Status'))
         ->setKey('status')
@@ -42,7 +46,7 @@ final class PhabricatorProjectSearchEngine
   }
 
 
-protected function buildQueryFromParameters(array $map) {
+  protected function buildQueryFromParameters(array $map) {
     $query = $this->newQuery();
 
     if (strlen($map['name'])) {
@@ -52,6 +56,10 @@ protected function buildQueryFromParameters(array $map) {
 
     if ($map['memberPHIDs']) {
       $query->withMemberPHIDs($map['memberPHIDs']);
+    }
+
+    if ($map['watcherPHIDs']) {
+      $query->withWatcherPHIDs($map['watcherPHIDs']);
     }
 
     if ($map['status']) {
@@ -131,9 +139,13 @@ protected function buildQueryFromParameters(array $map) {
 
     $set = new PhabricatorProjectIconSet();
     foreach ($set->getIcons() as $icon) {
+      if ($icon->getIsDisabled()) {
+        continue;
+      }
+
       $options[$icon->getKey()] = array(
         id(new PHUIIconView())
-          ->setIconFont($icon->getIcon()),
+          ->setIcon($icon->getIcon()),
         ' ',
         $icon->getLabel(),
       );
@@ -151,8 +163,6 @@ protected function buildQueryFromParameters(array $map) {
           ->setType(PHUITagView::TYPE_SHADE)
           ->setShade($color)
           ->setName($name),
-        ' ',
-        $name,
       );
     }
 
@@ -183,7 +193,7 @@ protected function buildQueryFromParameters(array $map) {
       ->setHref('/project/edit/')
       ->setColor(PHUIButtonView::GREEN);
 
-    $icon = $this->getApplication()->getFontIcon();
+    $icon = $this->getApplication()->getIcon();
     $app_name =  $this->getApplication()->getName();
     $view = id(new PHUIBigInfoView())
       ->setIcon($icon)

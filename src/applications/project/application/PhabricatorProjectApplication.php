@@ -18,7 +18,7 @@ final class PhabricatorProjectApplication extends PhabricatorApplication {
     return '/project/';
   }
 
-  public function getFontIcon() {
+  public function getIcon() {
     return 'fa-briefcase';
   }
 
@@ -48,28 +48,29 @@ final class PhabricatorProjectApplication extends PhabricatorApplication {
         'lock/(?P<id>[1-9]\d*)/'
           => 'PhabricatorProjectLockController',
         'members/(?P<id>[1-9]\d*)/'
-          => 'PhabricatorProjectMembersEditController',
-        'members/(?P<id>[1-9]\d*)/remove/'
+          => 'PhabricatorProjectMembersViewController',
+        'members/(?P<id>[1-9]\d*)/add/'
+          => 'PhabricatorProjectMembersAddController',
+        '(?P<type>members|watchers)/(?P<id>[1-9]\d*)/remove/'
           => 'PhabricatorProjectMembersRemoveController',
         'profile/(?P<id>[1-9]\d*)/'
           => 'PhabricatorProjectProfileController',
-        'feed/(?P<id>[1-9]\d*)/'
-          => 'PhabricatorProjectFeedController',
         'view/(?P<id>[1-9]\d*)/'
           => 'PhabricatorProjectViewController',
         'picture/(?P<id>[1-9]\d*)/'
           => 'PhabricatorProjectEditPictureController',
         $this->getEditRoutePattern('edit/')
           => 'PhabricatorProjectEditController',
+        '(?P<projectID>[1-9]\d*)/panel/'
+          => $this->getPanelRouting('PhabricatorProjectPanelController'),
         'subprojects/(?P<id>[1-9]\d*)/'
           => 'PhabricatorProjectSubprojectsController',
-        'milestones/(?P<id>[1-9]\d*)/'
-          => 'PhabricatorProjectMilestonesController',
         'board/(?P<id>[1-9]\d*)/'.
           '(?P<filter>filter/)?'.
           '(?:query/(?P<queryKey>[^/]+)/)?'
           => 'PhabricatorProjectBoardViewController',
         'move/(?P<id>[1-9]\d*)/' => 'PhabricatorProjectMoveController',
+        'cover/' => 'PhabricatorProjectCoverController',
         'board/(?P<projectID>[1-9]\d*)/' => array(
           'edit/(?:(?P<id>\d+)/)?'
             => 'PhabricatorProjectColumnEditController',
@@ -81,12 +82,24 @@ final class PhabricatorProjectApplication extends PhabricatorApplication {
             => 'PhabricatorProjectBoardImportController',
           'reorder/'
             => 'PhabricatorProjectBoardReorderController',
+          'disable/'
+            => 'PhabricatorProjectBoardDisableController',
+          'manage/'
+            => 'PhabricatorProjectBoardManageController',
+          'background/'
+            => 'PhabricatorProjectBoardBackgroundController',
         ),
         'update/(?P<id>[1-9]\d*)/(?P<action>[^/]+)/'
           => 'PhabricatorProjectUpdateController',
-        'history/(?P<id>[1-9]\d*)/' => 'PhabricatorProjectHistoryController',
+        'manage/(?P<id>[1-9]\d*)/' => 'PhabricatorProjectManageController',
         '(?P<action>watch|unwatch)/(?P<id>[1-9]\d*)/'
           => 'PhabricatorProjectWatchController',
+        'silence/(?P<id>[1-9]\d*)/'
+          => 'PhabricatorProjectSilenceController',
+        'warning/(?P<id>[1-9]\d*)/'
+          => 'PhabricatorProjectSubprojectWarningController',
+        'default/(?P<projectID>[1-9]\d*)/(?P<target>[^/]+)/'
+          => 'PhabricatorProjectDefaultController',
       ),
       '/tag/' => array(
         '(?P<slug>[^/]+)/' => 'PhabricatorProjectViewController',
@@ -128,6 +141,15 @@ final class PhabricatorProjectApplication extends PhabricatorApplication {
   public function getApplicationSearchDocumentTypes() {
     return array(
       PhabricatorProjectProjectPHIDType::TYPECONST,
+    );
+  }
+
+  public function getHelpDocumentationArticles(PhabricatorUser $viewer) {
+    return array(
+      array(
+        'name' => pht('Projects User Guide'),
+        'href' => PhabricatorEnv::getDoclink('Projects User Guide'),
+      ),
     );
   }
 

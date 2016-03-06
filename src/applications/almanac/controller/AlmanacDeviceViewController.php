@@ -15,60 +15,64 @@ final class AlmanacDeviceViewController
     $device = id(new AlmanacDeviceQuery())
       ->setViewer($viewer)
       ->withNames(array($name))
+      ->needProperties(true)
       ->executeOne();
     if (!$device) {
       return new Aphront404Response();
     }
 
-    // We rebuild locks on a device when viewing the detail page, so they
-    // automatically get corrected if they fall out of sync.
-    $device->rebuildDeviceLocks();
-
     $title = pht('Device %s', $device->getName());
 
-    $property_list = $this->buildPropertyList($device);
-    $action_list = $this->buildActionList($device);
-    $property_list->setActionList($action_list);
+    $properties = $this->buildPropertyList($device);
+    $actions = $this->buildActionList($device);
 
     $header = id(new PHUIHeaderView())
       ->setUser($viewer)
       ->setHeader($device->getName())
-      ->setPolicyObject($device);
+      ->setPolicyObject($device)
+      ->setHeaderIcon('fa-server');
 
-    $box = id(new PHUIObjectBoxView())
-      ->setHeader($header)
-      ->addPropertyList($property_list);
-
-    if ($device->getIsLocked()) {
-      $this->addLockMessage(
-        $box,
+    $issue = null;
+    if ($device->isClusterDevice()) {
+      $issue = $this->addClusterMessage(
+        pht('This device is bound to a cluster service.'),
         pht(
-          'This device is bound to a locked service, so it can not be '.
-          'edited.'));
+          'This device is bound to a cluster service. You do not have '.
+          'permission to manage cluster services, so the device can not '.
+          'be edited.'));
     }
 
     $interfaces = $this->buildInterfaceList($device);
 
     $crumbs = $this->buildApplicationCrumbs();
     $crumbs->addTextCrumb($device->getName());
+    $crumbs->setBorder(true);
 
     $timeline = $this->buildTransactionTimeline(
       $device,
       new AlmanacDeviceTransactionQuery());
     $timeline->setShouldTerminate(true);
 
-    return $this->newPage()
-      ->setTitle($title)
-      ->setCrumbs($crumbs)
-      ->appendChild(
-        array(
-          $box,
+    $view = id(new PHUITwoColumnView())
+      ->setHeader($header)
+      ->setMainColumn(array(
+          $issue,
           $interfaces,
           $this->buildAlmanacPropertiesTable($device),
           $this->buildSSHKeysTable($device),
           $this->buildServicesTable($device),
           $timeline,
-      ));
+        ))
+      ->setPropertyList($properties)
+      ->setActionList($actions);
+
+    return $this->newPage()
+      ->setTitle($title)
+      ->setCrumbs($crumbs)
+      ->appendChild(
+        array(
+          $view,
+        ));
   }
 
   private function buildPropertyList(AlmanacDevice $device) {
@@ -124,7 +128,7 @@ final class AlmanacDeviceViewController
       ->setCanEdit($can_edit);
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('Device Interfaces'))
+      ->setHeader(pht('DEVICE INTERFACES'))
       ->addActionLink(
         id(new PHUIButtonView())
           ->setTag('a')
@@ -132,12 +136,11 @@ final class AlmanacDeviceViewController
           ->setWorkflow(!$can_edit)
           ->setDisabled(!$can_edit)
           ->setText(pht('Add Interface'))
-          ->setIcon(
-            id(new PHUIIconView())
-              ->setIconFont('fa-plus')));
+          ->setIcon('fa-plus'));
 
     return id(new PHUIObjectBoxView())
       ->setHeader($header)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->setTable($table);
   }
 
@@ -175,7 +178,7 @@ final class AlmanacDeviceViewController
     $upload_uri = '/auth/sshkey/upload/?objectPHID='.$device_phid;
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('SSH Public Keys'))
+      ->setHeader(pht('SSH PUBLIC KEYS'))
       ->addActionLink(
         id(new PHUIButtonView())
           ->setTag('a')
@@ -185,7 +188,7 @@ final class AlmanacDeviceViewController
           ->setText(pht('Generate Keypair'))
           ->setIcon(
             id(new PHUIIconView())
-              ->setIconFont('fa-lock')))
+              ->setIcon('fa-lock')))
       ->addActionLink(
         id(new PHUIButtonView())
           ->setTag('a')
@@ -195,13 +198,12 @@ final class AlmanacDeviceViewController
           ->setText(pht('Upload Public Key'))
           ->setIcon(
             id(new PHUIIconView())
-              ->setIconFont('fa-upload')));
+              ->setIcon('fa-upload')));
 
     return id(new PHUIObjectBoxView())
       ->setHeader($header)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->setTable($table);
-
-
   }
 
   private function buildServicesTable(AlmanacDevice $device) {
@@ -220,14 +222,14 @@ final class AlmanacDeviceViewController
 
     $handles = $viewer->loadHandles(mpull($services, 'getPHID'));
 
-    $icon_lock = id(new PHUIIconView())
-      ->setIconFont('fa-lock');
+    $icon_cluster = id(new PHUIIconView())
+      ->setIcon('fa-sitemap');
 
     $rows = array();
     foreach ($services as $service) {
       $rows[] = array(
-        ($service->getIsLocked()
-          ? $icon_lock
+        ($service->isClusterService()
+          ? $icon_cluster
           : null),
         $handles->renderHandle($service->getPHID()),
       );
@@ -247,7 +249,8 @@ final class AlmanacDeviceViewController
         ));
 
     return id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('Bound Services'))
+      ->setHeaderText(pht('BOUND SERVICES'))
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->setTable($table);
   }
 

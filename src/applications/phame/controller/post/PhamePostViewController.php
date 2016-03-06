@@ -24,17 +24,8 @@ final class PhamePostViewController
 
     if (!$is_external) {
       $actions = $this->renderActions($post);
-
-      $action_button = id(new PHUIButtonView())
-        ->setTag('a')
-        ->setText(pht('Actions'))
-        ->setHref('#')
-        ->setIconFont('fa-bars')
-        ->addClass('phui-mobile-menu')
-        ->setDropdownMenu($actions);
-
       $header->setPolicyObject($post);
-      $header->addActionLink($action_button);
+      $header->setActionList($actions);
     }
 
     $document = id(new PHUIDocumentViewPro())
@@ -101,9 +92,18 @@ final class PhamePostViewController
       $subtitle = pht('Written by %s on %s.', $author, $date);
     }
 
+    $user_icon = $blogger_profile->getIcon();
+    $user_icon = PhabricatorPeopleIconSet::getIconIcon($user_icon);
+    $user_icon = id(new PHUIIconView())->setIcon($user_icon);
+
     $about = id(new PhameDescriptionView())
       ->setTitle($subtitle)
-      ->setDescription($blogger_profile->getTitle())
+      ->setDescription(
+        array(
+          $user_icon,
+          ' ',
+          $blogger_profile->getTitle(),
+        ))
       ->setImage($blogger->getProfileImageURI())
       ->setImageHref('/p/'.$blogger->getUsername());
 
@@ -136,6 +136,7 @@ final class PhamePostViewController
 
     $document->setFoot($next_view);
     $crumbs = $this->buildApplicationCrumbs();
+    $properties = phutil_tag_div('phui-document-view-pro-box', $properties);
 
     $page = $this->newPage()
       ->setTitle($post->getTitle())

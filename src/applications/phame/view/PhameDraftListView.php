@@ -53,7 +53,7 @@ final class PhameDraftListView extends AphrontTagView {
         $post->getTitle());
 
       $icon = id(new PHUIIconView())
-        ->setIconFont('fa-pencil-square-o')
+        ->setIcon('fa-pencil-square-o')
         ->addClass('phame-blog-list-icon');
 
       $edit = phutil_tag(
@@ -92,7 +92,11 @@ final class PhameDraftListView extends AphrontTagView {
         ),
         pht('Drafts')));
 
-    return array($header, $list);
+    return id(new PHUIBoxView())
+      ->appendChild($header)
+      ->appendChild($list)
+      ->addClass('pl')
+      ->setColor(PHUIBoxView::BLUE);
   }
 
 }

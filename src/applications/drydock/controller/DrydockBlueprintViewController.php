@@ -127,8 +127,12 @@ final class DrydockBlueprintViewController extends DrydockBlueprintController {
   private function buildPropertyListView(
     DrydockBlueprint $blueprint,
     PhabricatorActionListView $actions) {
+    $viewer = $this->getViewer();
 
-    $view = new PHUIPropertyListView();
+    $view = id(new PHUIPropertyListView())
+      ->setUser($viewer)
+      ->setObject($blueprint);
+
     $view->setActionList($actions);
 
     $view->addProperty(
@@ -168,7 +172,7 @@ final class DrydockBlueprintViewController extends DrydockBlueprintController {
         id(new PHUIButtonView())
           ->setTag('a')
           ->setHref($resources_uri)
-          ->setIconFont('fa-search')
+          ->setIcon('fa-search')
           ->setText(pht('View All')));
 
     return id(new PHUIObjectBoxView())
@@ -233,7 +237,7 @@ final class DrydockBlueprintViewController extends DrydockBlueprintController {
         id(new PHUIButtonView())
           ->setTag('a')
           ->setHref($authorizations_uri)
-          ->setIconFont('fa-search')
+          ->setIcon('fa-search')
           ->setText(pht('View All')));
 
     return id(new PHUIObjectBoxView())

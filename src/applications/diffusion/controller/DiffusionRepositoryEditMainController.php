@@ -284,17 +284,19 @@ final class DiffusionRepositoryEditMainController
       $repository->getVersionControlSystem());
 
     $view->addProperty(pht('Type'), $type);
-    $view->addProperty(pht('Callsign'), $repository->getCallsign());
 
-    $clone_name = $repository->getDetail('clone-name');
-
-    if ($repository->isHosted()) {
-      $view->addProperty(
-        pht('Clone/Checkout As'),
-        $clone_name
-          ? $clone_name.'/'
-          : phutil_tag('em', array(), $repository->getCloneName().'/'));
+    $callsign = $repository->getCallsign();
+    if (!strlen($callsign)) {
+      $callsign = phutil_tag('em', array(), pht('No Callsign'));
     }
+    $view->addProperty(pht('Callsign'), $callsign);
+
+    $short_name = $repository->getRepositorySlug();
+    if ($short_name === null) {
+      $short_name = $repository->getCloneName();
+      $short_name = phutil_tag('em', array(), $short_name);
+    }
+    $view->addProperty(pht('Short Name'), $short_name);
 
     $view->invokeWillRenderEvent();
 
@@ -312,10 +314,7 @@ final class DiffusionRepositoryEditMainController
     if (!strlen($description)) {
       $description = phutil_tag('em', array(), pht('No description provided.'));
     } else {
-      $description = PhabricatorMarkupEngine::renderOneObject(
-        $repository,
-        'description',
-        $viewer);
+      $description = new PHUIRemarkupView($viewer, $description);
     }
     $view->addTextContent($description);
 

@@ -37,7 +37,7 @@ final class PhabricatorConduitLogSearchEngine
     return array(
       id(new PhabricatorUsersSearchField())
         ->setKey('callerPHIDs')
-        ->setLabel(pht('Methods'))
+        ->setLabel(pht('Callers'))
         ->setAliases(array('caller', 'callers'))
         ->setDescription(pht('Find calls by specific users.')),
       id(new PhabricatorSearchStringListField())
@@ -140,7 +140,7 @@ final class PhabricatorConduitLogSearchEngine
           break;
         case ConduitAPIMethod::METHOD_STATUS_UNSTABLE:
           $status = id(new PHUIIconView())
-            ->setIconFont('fa-exclamation-triangle yellow')
+            ->setIcon('fa-exclamation-triangle yellow')
             ->addSigil('has-tooltip')
             ->setMetadata(
               array(
@@ -149,7 +149,7 @@ final class PhabricatorConduitLogSearchEngine
           break;
         case ConduitAPIMethod::METHOD_STATUS_DEPRECATED:
           $status = id(new PHUIIconView())
-            ->setIconFont('fa-exclamation-triangle red')
+            ->setIcon('fa-exclamation-triangle red')
             ->addSigil('has-tooltip')
             ->setMetadata(
               array(
@@ -158,7 +158,7 @@ final class PhabricatorConduitLogSearchEngine
           break;
         default:
           $status = id(new PHUIIconView())
-            ->setIconFont('fa-question-circle')
+            ->setIcon('fa-question-circle')
             ->addSigil('has-tooltip')
             ->setMetadata(
               array(

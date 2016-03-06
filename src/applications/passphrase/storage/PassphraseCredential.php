@@ -157,14 +157,6 @@ final class PassphraseCredential extends PassphraseDAO
     return false;
   }
 
-  public function shouldShowSubscribersProperty() {
-    return true;
-  }
-
-  public function shouldAllowSubscription($phid) {
-    return true;
-  }
-
 
 /* -(  PhabricatorDestructibleInterface  )----------------------------------- */
 

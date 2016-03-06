@@ -160,10 +160,16 @@ final class PhabricatorRepositorySearchEngine
 
       $commit = $repository->getMostRecentCommit();
       if ($commit) {
-        $commit_link = DiffusionView::linkCommit(
-          $repository,
-          $commit->getCommitIdentifier(),
-          $commit->getSummary());
+        $commit_link = phutil_tag(
+          'a',
+          array(
+            'href' => $commit->getURI(),
+          ),
+          pht(
+            '%s: %s',
+            $commit->getLocalName(),
+            $commit->getSummary()));
+
         $item->setSubhead($commit_link);
         $item->setEpoch($commit->getEpoch());
       }
@@ -248,7 +254,7 @@ final class PhabricatorRepositorySearchEngine
       ->setHref('/diffusion/create/')
       ->setColor(PHUIButtonView::GREEN);
 
-    $icon = $this->getApplication()->getFontIcon();
+    $icon = $this->getApplication()->getIcon();
     $app_name =  $this->getApplication()->getName();
     $view = id(new PHUIBigInfoView())
       ->setIcon($icon)

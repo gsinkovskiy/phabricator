@@ -39,6 +39,10 @@ final class PhabricatorProjectTransactionEditor
     $types[] = PhabricatorProjectTransaction::TYPE_LOCKED;
     $types[] = PhabricatorProjectTransaction::TYPE_PARENT;
     $types[] = PhabricatorProjectTransaction::TYPE_MILESTONE;
+    $types[] = PhabricatorProjectTransaction::TYPE_HASWORKBOARD;
+    $types[] = PhabricatorProjectTransaction::TYPE_DEFAULT_SORT;
+    $types[] = PhabricatorProjectTransaction::TYPE_DEFAULT_FILTER;
+    $types[] = PhabricatorProjectTransaction::TYPE_BACKGROUND;
 
     return $types;
   }
@@ -65,9 +69,17 @@ final class PhabricatorProjectTransactionEditor
         return $object->getColor();
       case PhabricatorProjectTransaction::TYPE_LOCKED:
         return (int)$object->getIsMembershipLocked();
+      case PhabricatorProjectTransaction::TYPE_HASWORKBOARD:
+        return (int)$object->getHasWorkboard();
       case PhabricatorProjectTransaction::TYPE_PARENT:
       case PhabricatorProjectTransaction::TYPE_MILESTONE:
         return null;
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_SORT:
+        return $object->getDefaultWorkboardSort();
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_FILTER:
+        return $object->getDefaultWorkboardFilter();
+      case PhabricatorProjectTransaction::TYPE_BACKGROUND:
+        return $object->getWorkboardBackgroundColor();
     }
 
     return parent::getCustomTransactionOldValue($object, $xaction);
@@ -86,7 +98,17 @@ final class PhabricatorProjectTransactionEditor
       case PhabricatorProjectTransaction::TYPE_LOCKED:
       case PhabricatorProjectTransaction::TYPE_PARENT:
       case PhabricatorProjectTransaction::TYPE_MILESTONE:
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_SORT:
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_FILTER:
         return $xaction->getNewValue();
+      case PhabricatorProjectTransaction::TYPE_HASWORKBOARD:
+        return (int)$xaction->getNewValue();
+      case PhabricatorProjectTransaction::TYPE_BACKGROUND:
+        $value = $xaction->getNewValue();
+        if (!strlen($value)) {
+          return null;
+        }
+        return $value;
       case PhabricatorProjectTransaction::TYPE_SLUGS:
         return $this->normalizeSlugs($xaction->getNewValue());
     }
@@ -131,6 +153,18 @@ final class PhabricatorProjectTransactionEditor
         $object->setMilestoneNumber($number);
         $object->setParentProjectPHID($xaction->getNewValue());
         return;
+      case PhabricatorProjectTransaction::TYPE_HASWORKBOARD:
+        $object->setHasWorkboard($xaction->getNewValue());
+        return;
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_SORT:
+        $object->setDefaultWorkboardSort($xaction->getNewValue());
+        return;
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_FILTER:
+        $object->setDefaultWorkboardFilter($xaction->getNewValue());
+        return;
+      case PhabricatorProjectTransaction::TYPE_BACKGROUND:
+        $object->setWorkboardBackgroundColor($xaction->getNewValue());
+        return;
     }
 
     return parent::applyCustomInternalTransaction($object, $xaction);
@@ -147,11 +181,12 @@ final class PhabricatorProjectTransactionEditor
       case PhabricatorProjectTransaction::TYPE_NAME:
         // First, add the old name as a secondary slug; this is helpful
         // for renames and generally a good thing to do.
-        if ($old !== null) {
-          $this->addSlug($object, $old, false);
+        if (!$this->getIsMilestone()) {
+          if ($old !== null) {
+            $this->addSlug($object, $old, false);
+          }
+          $this->addSlug($object, $new, false);
         }
-        $this->addSlug($object, $new, false);
-
         return;
       case PhabricatorProjectTransaction::TYPE_SLUGS:
         $old = $xaction->getOldValue();
@@ -172,73 +207,14 @@ final class PhabricatorProjectTransactionEditor
       case PhabricatorProjectTransaction::TYPE_LOCKED:
       case PhabricatorProjectTransaction::TYPE_PARENT:
       case PhabricatorProjectTransaction::TYPE_MILESTONE:
+      case PhabricatorProjectTransaction::TYPE_HASWORKBOARD:
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_SORT:
+      case PhabricatorProjectTransaction::TYPE_DEFAULT_FILTER:
+      case PhabricatorProjectTransaction::TYPE_BACKGROUND:
         return;
      }
 
     return parent::applyCustomExternalTransaction($object, $xaction);
-  }
-
-  protected function applyBuiltinExternalTransaction(
-    PhabricatorLiskDAO $object,
-    PhabricatorApplicationTransaction $xaction) {
-
-    switch ($xaction->getTransactionType()) {
-      case PhabricatorTransactions::TYPE_EDGE:
-        $edge_type = $xaction->getMetadataValue('edge:type');
-        switch ($edge_type) {
-          case PhabricatorProjectProjectHasMemberEdgeType::EDGECONST:
-          case PhabricatorObjectHasWatcherEdgeType::EDGECONST:
-            $old = $xaction->getOldValue();
-            $new = $xaction->getNewValue();
-
-            // When adding members or watchers, we add subscriptions.
-            $add = array_keys(array_diff_key($new, $old));
-
-            // When removing members, we remove their subscription too.
-            // When unwatching, we leave subscriptions, since it's fine to be
-            // subscribed to a project but not be a member of it.
-            $edge_const = PhabricatorProjectProjectHasMemberEdgeType::EDGECONST;
-            if ($edge_type == $edge_const) {
-              $rem = array_keys(array_diff_key($old, $new));
-            } else {
-              $rem = array();
-            }
-
-            // NOTE: The subscribe is "explicit" because there's no implicit
-            // unsubscribe, so Join -> Leave -> Join doesn't resubscribe you
-            // if we use an implicit subscribe, even though you never willfully
-            // unsubscribed. Not sure if adding implicit unsubscribe (which
-            // would not write the unsubscribe row) is justified to deal with
-            // this, which is a fairly weird edge case and pretty arguable both
-            // ways.
-
-            // Subscriptions caused by watches should also clearly be explicit,
-            // and that case is unambiguous.
-
-            id(new PhabricatorSubscriptionsEditor())
-              ->setActor($this->requireActor())
-              ->setObject($object)
-              ->subscribeExplicit($add)
-              ->unsubscribe($rem)
-              ->save();
-
-            if ($rem) {
-              // When removing members, also remove any watches on the project.
-              $edge_editor = new PhabricatorEdgeEditor();
-              foreach ($rem as $rem_phid) {
-                $edge_editor->removeEdge(
-                  $object->getPHID(),
-                  PhabricatorObjectHasWatcherEdgeType::EDGECONST,
-                  $rem_phid);
-              }
-              $edge_editor->save();
-            }
-            break;
-        }
-        break;
-    }
-
-    return parent::applyBuiltinExternalTransaction($object, $xaction);
   }
 
   protected function validateAllTransactions(
@@ -282,7 +258,12 @@ final class PhabricatorProjectTransactionEditor
 
     foreach ($xactions as $xaction) {
       switch ($xaction->getTransactionType()) {
-        case PhabricatorProjectTransaction::TYPE_MEMBERS:
+        case PhabricatorTransactions::TYPE_EDGE:
+          $type = $xaction->getMetadataValue('edge:type');
+          if ($type != PhabricatorProjectProjectHasMemberEdgeType::EDGECONST) {
+            break;
+          }
+
           if ($is_parent) {
             $errors[] = new PhabricatorApplicationTransactionValidationError(
               $xaction->getTransactionType(),
@@ -582,7 +563,7 @@ final class PhabricatorProjectTransactionEditor
     return id(new PhabricatorProjectQuery())
       ->setViewer(PhabricatorUser::getOmnipotentUser())
       ->withPHIDs(array($object->getPHID()))
-      ->needMembers(true)
+      ->needAncestorMembers(true)
       ->executeOne();
   }
 
@@ -602,6 +583,10 @@ final class PhabricatorProjectTransactionEditor
     );
   }
 
+  protected function getMailCc(PhabricatorLiskDAO $object) {
+    return array();
+  }
+
   public function getMailTagsMap() {
     return array(
       PhabricatorProjectTransaction::MAILTAG_METADATA =>
@@ -610,8 +595,6 @@ final class PhabricatorProjectTransactionEditor
         pht('Project membership changes.'),
       PhabricatorProjectTransaction::MAILTAG_WATCHERS =>
         pht('Project watcher list changes.'),
-      PhabricatorProjectTransaction::MAILTAG_SUBSCRIBERS =>
-        pht('Project subscribers change.'),
       PhabricatorProjectTransaction::MAILTAG_OTHER =>
         pht('Other project activity not listed above occurs.'),
     );
@@ -687,6 +670,7 @@ final class PhabricatorProjectTransactionEditor
           }
           break;
         case PhabricatorProjectTransaction::TYPE_PARENT:
+        case PhabricatorProjectTransaction::TYPE_MILESTONE:
           $materialize = true;
           $new_parent = $object->getParentProject();
           break;
@@ -713,12 +697,21 @@ final class PhabricatorProjectTransactionEditor
       }
     }
 
+    if ($this->getIsNewObject()) {
+      $this->setDefaultProfilePicture($object);
+    }
+
     // TODO: We should dump an informational transaction onto the parent
     // project to show that we created the sub-thing.
 
     if ($materialize) {
       id(new PhabricatorProjectsMembershipIndexEngineExtension())
         ->rematerialize($object);
+    }
+
+    if ($new_parent) {
+      id(new PhabricatorProjectsMembershipIndexEngineExtension())
+        ->rematerialize($new_parent);
     }
 
     return parent::applyFinalEffects($object, $xactions);
@@ -756,10 +749,15 @@ final class PhabricatorProjectTransactionEditor
   }
 
   private function removeSlugs(PhabricatorProject $project, array $slugs) {
-    $slugs = $this->normalizeSlugs($slugs);
-
     if (!$slugs) {
       return;
+    }
+
+    // We're going to try to delete both the literal and normalized versions
+    // of all slugs. This allows us to destroy old slugs that are no longer
+    // valid.
+    foreach ($this->normalizeSlugs($slugs) as $slug) {
+      $slugs[] = $slug;
     }
 
     $objects = id(new PhabricatorProjectSlug())->loadAllWhere(
@@ -844,27 +842,6 @@ final class PhabricatorProjectTransactionEditor
 
     $results = parent::expandTransactions($object, $xactions);
 
-    // Automatically add the author as a member when they create a project
-    // if they're using the web interface.
-
-    $content_source = $this->getContentSource();
-    $source_web = PhabricatorContentSource::SOURCE_WEB;
-    $is_web = ($content_source->getSource() === $source_web);
-
-    if ($this->getIsNewObject() && $is_web) {
-      if ($actor_phid) {
-        $type_member = PhabricatorProjectProjectHasMemberEdgeType::EDGECONST;
-
-        $results[] = id(new PhabricatorProjectTransaction())
-          ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
-          ->setMetadataValue('edge:type', $type_member)
-          ->setNewValue(
-            array(
-              '+' => array($actor_phid => $actor_phid),
-            ));
-      }
-    }
-
     $is_milestone = $object->isMilestone();
     foreach ($xactions as $xaction) {
       switch ($xaction->getTransactionType()) {
@@ -881,5 +858,54 @@ final class PhabricatorProjectTransactionEditor
     return $results;
   }
 
+  private function setDefaultProfilePicture(PhabricatorProject $project) {
+    if ($project->isMilestone()) {
+      return;
+    }
+
+    $compose_color = $project->getDisplayIconComposeColor();
+    $compose_icon = $project->getDisplayIconComposeIcon();
+
+    $builtin = id(new PhabricatorFilesComposeIconBuiltinFile())
+      ->setColor($compose_color)
+      ->setIcon($compose_icon);
+
+    $data = $builtin->loadBuiltinFileData();
+
+    $file = PhabricatorFile::newFromFileData(
+      $data,
+      array(
+        'name' => $builtin->getBuiltinDisplayName(),
+        'profile' => true,
+        'canCDN' => true,
+      ));
+
+    $project
+      ->setProfileImagePHID($file->getPHID())
+      ->save();
+  }
+
+
+  protected function shouldApplyHeraldRules(
+    PhabricatorLiskDAO $object,
+    array $xactions) {
+    return true;
+  }
+
+  protected function buildHeraldAdapter(
+    PhabricatorLiskDAO $object,
+    array $xactions) {
+
+    // Herald rules may run on behalf of other users and need to execute
+    // membership checks against ancestors.
+    $project = id(new PhabricatorProjectQuery())
+      ->setViewer(PhabricatorUser::getOmnipotentUser())
+      ->withPHIDs(array($object->getPHID()))
+      ->needAncestorMembers(true)
+      ->executeOne();
+
+    return id(new PhabricatorProjectHeraldAdapter())
+      ->setProject($project);
+  }
 
 }

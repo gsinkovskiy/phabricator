@@ -1,17 +1,12 @@
 <?php
 
-/**
- * NOTE: this class should only be used where local access to the repository
- * is guaranteed and NOT from within the Diffusion application. Diffusion
- * should use Conduit method 'diffusion.filecontentquery' to get this sort
- * of data.
- */
 abstract class DiffusionFileContentQuery extends DiffusionQuery {
 
-  private $fileContent;
-  private $viewer;
   private $timeout;
   private $byteLimit;
+
+  private $didHitByteLimit = false;
+  private $didHitTimeLimit = false;
 
   public function setTimeout($timeout) {
     $this->timeout = $timeout;
@@ -31,71 +26,74 @@ abstract class DiffusionFileContentQuery extends DiffusionQuery {
     return $this->byteLimit;
   }
 
-  public function setViewer(PhabricatorUser $user) {
-    $this->viewer = $user;
-    return $this;
-  }
-
-  public function getViewer() {
-    return $this->viewer;
-  }
-
   final public static function newFromDiffusionRequest(
     DiffusionRequest $request) {
     return parent::newQueryObject(__CLASS__, $request);
   }
 
-  abstract public function getFileContentFuture();
-  abstract protected function executeQueryFromFuture(Future $future);
+  final public function getExceededByteLimit() {
+    return $this->didHitByteLimit;
+  }
 
-  final public function loadFileContentFromFuture(Future $future) {
+  final public function getExceededTimeLimit() {
+    return $this->didHitTimeLimit;
+  }
 
-    if ($this->timeout) {
-      $future->setTimeout($this->timeout);
+  abstract protected function getFileContentFuture();
+  abstract protected function resolveFileContentFuture(Future $future);
+
+  final protected function executeQuery() {
+    $future = $this->getFileContentFuture();
+
+    if ($this->getTimeout()) {
+      $future->setTimeout($this->getTimeout());
     }
 
-    if ($this->getByteLimit()) {
-      $future->setStdoutSizeLimit($this->getByteLimit());
+    $byte_limit = $this->getByteLimit();
+    if ($byte_limit) {
+      $future->setStdoutSizeLimit($byte_limit + 1);
     }
+
+    $drequest = $this->getRequest();
+
+    $name = basename($drequest->getPath());
+    $ttl = PhabricatorTime::getNow() + phutil_units('48 hours in seconds');
 
     try {
-      $file_content = $this->executeQueryFromFuture($future);
+      $threshold = PhabricatorFileStorageEngine::getChunkThreshold();
+      $future->setReadBufferSize($threshold);
+
+      $source = id(new PhabricatorExecFutureFileUploadSource())
+        ->setName($name)
+        ->setTTL($ttl)
+        ->setViewPolicy(PhabricatorPolicies::POLICY_NOONE)
+        ->setExecFuture($future);
+
+      $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
+        $file = $source->uploadFile();
+      unset($unguarded);
+
     } catch (CommandException $ex) {
       if (!$future->getWasKilledByTimeout()) {
         throw $ex;
       }
 
-      $message = pht(
-        '<Attempt to load this file was terminated after %s second(s).>',
-        $this->timeout);
-
-      $file_content = new DiffusionFileContent();
-      $file_content->setCorpus($message);
+      $this->didHitTimeLimit = true;
+      $file = null;
     }
 
-    $this->fileContent = $file_content;
+    if ($byte_limit && ($file->getByteSize() > $byte_limit)) {
+      $this->didHitByteLimit = true;
 
-    $repository = $this->getRequest()->getRepository();
-    $try_encoding = $repository->getDetail('encoding');
-    if ($try_encoding) {
-        $this->fileContent->setCorpus(
-          phutil_utf8_convert(
-            $this->fileContent->getCorpus(), 'UTF-8', $try_encoding));
+      $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
+        id(new PhabricatorDestructionEngine())
+          ->destroyObject($file);
+      unset($unguarded);
+
+      $file = null;
     }
 
-    return $this->fileContent;
-  }
-
-  final protected function executeQuery() {
-    return $this->loadFileContentFromFuture($this->getFileContentFuture());
-  }
-
-  final public function loadFileContent() {
-    return $this->executeQuery();
-  }
-
-  final public function getRawData() {
-    return $this->fileContent->getCorpus();
+    return $file;
   }
 
 }

@@ -336,14 +336,6 @@ final class PhameBlog extends PhameDAO
     return ($this->creatorPHID == $phid);
   }
 
-  public function shouldShowSubscribersProperty() {
-    return true;
-  }
-
-  public function shouldAllowSubscription($phid) {
-    return true;
-  }
-
 
 /* -(  PhabricatorConduitResultInterface  )---------------------------------- */
 
