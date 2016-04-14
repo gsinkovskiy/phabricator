@@ -21,6 +21,9 @@ final class PhabricatorOwnersPackageTransactionEditor
     $types[] = PhabricatorOwnersPackageTransaction::TYPE_PATHS;
     $types[] = PhabricatorOwnersPackageTransaction::TYPE_STATUS;
 
+    $types[] = PhabricatorTransactions::TYPE_VIEW_POLICY;
+    $types[] = PhabricatorTransactions::TYPE_EDIT_POLICY;
+
     return $types;
   }
 
@@ -204,6 +207,10 @@ final class PhabricatorOwnersPackageTransactionEditor
         }
         break;
       case PhabricatorOwnersPackageTransaction::TYPE_PATHS:
+        if (!$xactions) {
+          continue;
+        }
+
         $old = mpull($object->getPaths(), 'getRef');
         foreach ($xactions as $xaction) {
           $new = $xaction->getNewValue();

@@ -156,14 +156,6 @@ final class PhabricatorPaste extends PhabricatorPasteDAO
     return ($this->authorPHID == $phid);
   }
 
-  public function shouldShowSubscribersProperty() {
-    return true;
-  }
-
-  public function shouldAllowSubscription($phid) {
-    return true;
-  }
-
 
 /* -(  PhabricatorTokenReceiverInterface  )---------------------------------- */
 
@@ -281,7 +273,7 @@ final class PhabricatorPaste extends PhabricatorPasteDAO
       id(new PhabricatorConduitSearchFieldSpecification())
         ->setKey('status')
         ->setType('string')
-        ->setDescription(pht('Active or arhived status of the paste.')),
+        ->setDescription(pht('Active or archived status of the paste.')),
     );
   }
 

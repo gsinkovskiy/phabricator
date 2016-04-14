@@ -23,6 +23,7 @@ abstract class PhabricatorEditEngine
   private $isCreate;
   private $editEngineConfiguration;
   private $contextParameters = array();
+  private $targetObject;
 
   final public function setViewer(PhabricatorUser $viewer) {
     $this->viewer = $viewer;
@@ -57,16 +58,32 @@ abstract class PhabricatorEditEngine
     return $this;
   }
 
+  public function isEngineConfigurable() {
+    return true;
+  }
+
+  public function isEngineExtensible() {
+    return true;
+  }
+
+  /**
+   * Force the engine to edit a particular object.
+   */
+  public function setTargetObject($target_object) {
+    $this->targetObject = $target_object;
+    return $this;
+  }
+
+  public function getTargetObject() {
+    return $this->targetObject;
+  }
+
 
 /* -(  Managing Fields  )---------------------------------------------------- */
 
 
   abstract public function getEngineApplicationClass();
   abstract protected function buildCustomEditFields($object);
-
-  protected function didBuildCustomEditFields($object, array $fields) {
-    return;
-  }
 
   public function getFieldsForConfig(
     PhabricatorEditEngineConfiguration $config) {
@@ -93,9 +110,13 @@ abstract class PhabricatorEditEngine
     }
 
     $fields = mpull($fields, null, 'getKey');
-    $this->didBuildCustomEditFields($object, $fields);
 
-    $extensions = PhabricatorEditEngineExtension::getAllEnabledExtensions();
+    if ($this->isEngineExtensible()) {
+      $extensions = PhabricatorEditEngineExtension::getAllEnabledExtensions();
+    } else {
+      $extensions = array();
+    }
+
     foreach ($extensions as $extension) {
       $extension->setViewer($viewer);
 
@@ -115,7 +136,6 @@ abstract class PhabricatorEditEngine
       }
 
       $extension_fields = mpull($extension_fields, null, 'getKey');
-      $extension->didBuildCustomEditFields($this, $object, $extension_fields);
 
       foreach ($extension_fields as $key => $field) {
         $fields[$key] = $field;
@@ -123,8 +143,13 @@ abstract class PhabricatorEditEngine
     }
 
     $config = $this->getEditEngineConfiguration();
+    $fields = $this->willConfigureFields($object, $fields);
     $fields = $config->applyConfigurationToFields($this, $object, $fields);
 
+    return $fields;
+  }
+
+  protected function willConfigureFields($object, array $fields) {
     return $fields;
   }
 
@@ -161,6 +186,12 @@ abstract class PhabricatorEditEngine
    * @task text
    */
   abstract protected function getObjectCreateShortText();
+
+
+  /**
+   * @task text
+   */
+  abstract protected function getObjectName();
 
 
   /**
@@ -717,23 +748,28 @@ abstract class PhabricatorEditEngine
         break;
     }
 
-    $id = $request->getURIData('id');
+    $object = $this->getTargetObject();
+    if (!$object) {
+      $id = $request->getURIData('id');
 
-    if ($id) {
-      $this->setIsCreate(false);
-      $object = $this->newObjectFromID($id, $capabilities);
-      if (!$object) {
-        return new Aphront404Response();
+      if ($id) {
+        $this->setIsCreate(false);
+        $object = $this->newObjectFromID($id, $capabilities);
+        if (!$object) {
+          return new Aphront404Response();
+        }
+      } else {
+        // Make sure the viewer has permission to create new objects of
+        // this type if we're going to create a new object.
+        if ($require_create) {
+          $this->requireCreateCapability();
+        }
+
+        $this->setIsCreate(true);
+        $object = $this->newEditableObject();
       }
     } else {
-      // Make sure the viewer has permission to create new objects of
-      // this type if we're going to create a new object.
-      if ($require_create) {
-        $this->requireCreateCapability();
-      }
-
-      $this->setIsCreate(true);
-      $object = $this->newEditableObject();
+      $id = $object->getID();
     }
 
     $this->validateObject($object);
@@ -791,7 +827,7 @@ abstract class PhabricatorEditEngine
   }
 
   private function buildCrumbs($object, $final = false) {
-    $controller = $this->getcontroller();
+    $controller = $this->getController();
 
     $crumbs = $controller->buildApplicationCrumbsForEditEngine();
     if ($this->getIsCreate()) {
@@ -828,7 +864,7 @@ abstract class PhabricatorEditEngine
     $template = $object->getApplicationTransactionTemplate();
 
     $validation_exception = null;
-    if ($request->isFormPost()) {
+    if ($request->isFormPost() && $request->getBool('editEngine')) {
       $submit_fields = $fields;
 
       foreach ($submit_fields as $key => $field) {
@@ -958,8 +994,32 @@ abstract class PhabricatorEditEngine
 
     if ($this->getIsCreate()) {
       $header_text = $this->getFormHeaderText($object);
+      $header_icon = 'fa-plus-square';
     } else {
       $header_text = $this->getObjectEditTitleText($object);
+      $header_icon = 'fa-pencil';
+    }
+
+    $show_preview = !$request->isAjax();
+
+    if ($show_preview) {
+      $previews = array();
+      foreach ($fields as $field) {
+        $preview = $field->getPreviewPanel();
+        if (!$preview) {
+          continue;
+        }
+
+        $control_id = $field->getControlID();
+
+        $preview
+          ->setControlID($control_id)
+          ->setPreviewURI('/transactions/remarkuppreview/');
+
+        $previews[] = $preview;
+      }
+    } else {
+      $previews = array();
     }
 
     $form = $this->buildEditForm($object, $fields);
@@ -985,20 +1045,33 @@ abstract class PhabricatorEditEngine
 
     $header = id(new PHUIHeaderView())
       ->setHeader($header_text)
-      ->addActionLink($action_button);
+      ->setHeaderIcon($header_icon);
+
+    if ($action_button) {
+      $header->addActionLink($action_button);
+    }
 
     $crumbs = $this->buildCrumbs($object, $final = true);
+    $crumbs->setBorder(true);
 
     $box = id(new PHUIObjectBoxView())
       ->setUser($viewer)
-      ->setHeader($header)
+      ->setHeaderText($this->getObjectName())
       ->setValidationException($validation_exception)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($form);
+
+    $view = id(new PHUITwoColumnView())
+      ->setHeader($header)
+      ->setFooter(array(
+        $box,
+        $previews,
+      ));
 
     return $controller->newPage()
       ->setTitle($header_text)
       ->setCrumbs($crumbs)
-      ->appendChild($box);
+      ->appendChild($view);
   }
 
   protected function newEditResponse(
@@ -1015,7 +1088,8 @@ abstract class PhabricatorEditEngine
     $request = $controller->getRequest();
 
     $form = id(new AphrontFormView())
-      ->setUser($viewer);
+      ->setUser($viewer)
+      ->addHiddenInput('editEngine', 'true');
 
     foreach ($this->contextParameters as $param) {
       $form->addHiddenInput($param, $request->getStr($param));
@@ -1044,6 +1118,10 @@ abstract class PhabricatorEditEngine
   }
 
   private function buildEditFormActionButton($object) {
+    if (!$this->isEngineConfigurable()) {
+      return null;
+    }
+
     $viewer = $this->getViewer();
 
     $action_view = id(new PhabricatorActionListView())
@@ -1057,7 +1135,7 @@ abstract class PhabricatorEditEngine
       ->setTag('a')
       ->setText(pht('Configure Form'))
       ->setHref('#')
-      ->setIconFont('fa-gear')
+      ->setIcon('fa-gear')
       ->setDropdownMenu($action_view);
 
     return $action_button;
@@ -1117,6 +1195,60 @@ abstract class PhabricatorEditEngine
 
     return $actions;
   }
+
+
+  /**
+   * Test if the viewer could apply a certain type of change by using the
+   * normal "Edit" form.
+   *
+   * This method returns `true` if the user has access to an edit form and
+   * that edit form has a field which applied the specified transaction type,
+   * and that field is visible and editable for the user.
+   *
+   * For example, you can use it to test if a user is able to reassign tasks
+   * or not, prior to rendering dedicated UI for task reassingment.
+   *
+   * Note that this method does NOT test if the user can actually edit the
+   * current object, just if they have access to the related field.
+   *
+   * @param const Transaction type to test for.
+   * @return bool True if the user could "Edit" to apply the transaction type.
+   */
+  final public function hasEditAccessToTransaction($xaction_type) {
+    $viewer = $this->getViewer();
+
+    $config = $this->loadDefaultEditConfiguration();
+    if (!$config) {
+      return false;
+    }
+
+    $object = $this->getTargetObject();
+    if (!$object) {
+      $object = $this->newEditableObject();
+    }
+
+    $fields = $this->buildEditFields($object);
+
+    $field = null;
+    foreach ($fields as $form_field) {
+      $field_xaction_type = $form_field->getTransactionType();
+      if ($field_xaction_type === $xaction_type) {
+        $field = $form_field;
+        break;
+      }
+    }
+
+    if (!$field) {
+      return false;
+    }
+
+    if (!$field->shouldReadValueFromSubmit()) {
+      return false;
+    }
+
+    return true;
+  }
+
 
   final public function addActionToCrumbs(PHUICrumbsView $crumbs) {
     $viewer = $this->getViewer();
@@ -1249,6 +1381,8 @@ abstract class PhabricatorEditEngine
 
       $comment_actions[$key] = $comment_action;
     }
+
+    $comment_actions = msortv($comment_actions, 'getSortVector');
 
     $view->setCommentActions($comment_actions);
 
@@ -1569,7 +1703,7 @@ abstract class PhabricatorEditEngine
 
     $editor = $object->getApplicationTransactionEditor()
       ->setActor($viewer)
-      ->setContentSourceFromConduitRequest($request)
+      ->setContentSource($request->newContentSource())
       ->setContinueOnNoEffect(true);
 
     if (!$this->getIsCreate()) {
@@ -1610,6 +1744,7 @@ abstract class PhabricatorEditEngine
     array $types,
     PhabricatorApplicationTransaction $template) {
 
+    $viewer = $request->getUser();
     $transactions_key = 'transactions';
 
     $xactions = $request->getValue($transactions_key);
@@ -1665,7 +1800,18 @@ abstract class PhabricatorEditEngine
       // Let the parameter type interpret the value. This allows you to
       // use usernames in list<user> fields, for example.
       $parameter_type = $type->getConduitParameterType();
-      $xaction['value'] = $parameter_type->getValue($xaction, 'value');
+
+      $parameter_type->setViewer($viewer);
+
+      try {
+        $xaction['value'] = $parameter_type->getValue($xaction, 'value');
+      } catch (Exception $ex) {
+        throw new PhutilProxyException(
+          pht(
+            'Exception when processing transaction of type "%s".',
+            $xaction['type']),
+          $ex);
+      }
 
       $type_xactions = $type->generateTransactions(
         clone $template,
@@ -1728,7 +1874,7 @@ abstract class PhabricatorEditEngine
 
   public function getIcon() {
     $application = $this->getApplication();
-    return $application->getFontIcon();
+    return $application->getIcon();
   }
 
   public function loadQuickCreateItems() {

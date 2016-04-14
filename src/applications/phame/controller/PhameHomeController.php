@@ -6,6 +6,16 @@ final class PhameHomeController extends PhamePostController {
     return true;
   }
 
+  protected function buildApplicationCrumbs() {
+    $crumbs = parent::buildApplicationCrumbs();
+
+    id(new PhameBlogEditEngine())
+      ->setViewer($this->getViewer())
+      ->addActionToCrumbs($crumbs);
+
+    return $crumbs;
+  }
+
   public function handleRequest(AphrontRequest $request) {
     $viewer = $request->getViewer();
 
@@ -28,39 +38,44 @@ final class PhameHomeController extends PhamePostController {
         ->withVisibility(PhameConstants::VISIBILITY_PUBLISHED)
         ->executeWithCursorPager($pager);
 
-      $post_list = id(new PhamePostListView())
-        ->setPosts($posts)
-        ->setViewer($viewer)
-        ->showBlog(true);
+      if ($posts) {
+        $post_list = id(new PhamePostListView())
+          ->setPosts($posts)
+          ->setViewer($viewer)
+          ->showBlog(true);
+      } else {
+        $post_list = id(new PHUIBigInfoView())
+          ->setIcon('fa-star')
+          ->setTitle('No Visible Posts')
+          ->setDescription(
+            pht('There aren\'t any visible blog posts.'));
+      }
     } else {
       $create_button = id(new PHUIButtonView())
         ->setTag('a')
         ->setText(pht('Create a Blog'))
-        ->setHref('/phame/blog/new/')
+        ->setHref('/phame/blog/edit/')
         ->setColor(PHUIButtonView::GREEN);
 
       $post_list = id(new PHUIBigInfoView())
         ->setIcon('fa-star')
         ->setTitle('Welcome to Phame')
         ->setDescription(
-          pht('There aren\'t any visible Blog Posts.'))
+          pht('There aren\'t any visible blog posts.'))
         ->addAction($create_button);
     }
 
-    $actions = $this->renderActions($viewer);
-    $action_button = id(new PHUIButtonView())
+    $view_all = id(new PHUIButtonView())
       ->setTag('a')
-      ->setText(pht('Actions'))
-      ->setHref('#')
-      ->setIconFont('fa-bars')
-      ->addClass('phui-mobile-menu')
-      ->setDropdownMenu($actions);
+      ->setText(pht('View All'))
+      ->setHref($this->getApplicationURI('post/'))
+      ->setIcon('fa-list-ul');
 
     $title = pht('Recent Posts');
 
     $header = id(new PHUIHeaderView())
       ->setHeader($title)
-      ->addActionLink($action_button);
+      ->addActionLink($view_all);
 
     $crumbs = $this->buildApplicationCrumbs();
     $crumbs->setBorder(true);
@@ -77,7 +92,7 @@ final class PhameHomeController extends PhamePostController {
       ->setViewer($viewer);
 
     $draft_list = null;
-    if ($viewer->isLoggedIn()) {
+    if ($viewer->isLoggedIn() && $blogs) {
       $drafts = id(new PhamePostQuery())
         ->setViewer($viewer)
         ->withBloggerPHIDs(array($viewer->getPHID()))
@@ -100,56 +115,17 @@ final class PhameHomeController extends PhamePostController {
         $blog_list,
         $draft_list,
       ))
-      ->setDisplay(PHUITwoColumnView::DISPLAY_LEFT)
-      ->addClass('phame-home-view');
+      ->addClass('phame-home-container');
+
+    $phame_home = phutil_tag_div('phame-home-view', $phame_view);
 
     return $this->newPage()
       ->setTitle($title)
       ->setCrumbs($crumbs)
       ->appendChild(
         array(
-          $phame_view,
+          $phame_home,
       ));
-
-
-  }
-
-  private function renderActions($viewer) {
-    $actions = id(new PhabricatorActionListView())
-      ->setUser($viewer);
-
-    $actions->addAction(
-      id(new PhabricatorActionView())
-        ->setIcon('fa-pencil')
-        ->setHref($this->getApplicationURI('post/query/draft/'))
-        ->setName(pht('My Drafts')));
-
-    $actions->addAction(
-      id(new PhabricatorActionView())
-        ->setIcon('fa-pencil-square-o')
-        ->setHref($this->getApplicationURI('post/'))
-        ->setName(pht('All Posts')));
-
-    return $actions;
-  }
-
-  private function renderBlogs($viewer, $blogs) {}
-
-  protected function buildApplicationCrumbs() {
-    $crumbs = parent::buildApplicationCrumbs();
-
-    $can_create = $this->hasApplicationCapability(
-      PhameBlogCreateCapability::CAPABILITY);
-
-    $crumbs->addAction(
-      id(new PHUIListItemView())
-        ->setName(pht('New Blog'))
-        ->setHref($this->getApplicationURI('/blog/new/'))
-        ->setIcon('fa-plus-square')
-        ->setDisabled(!$can_create)
-        ->setWorkflow(!$can_create));
-
-    return $crumbs;
   }
 
 }

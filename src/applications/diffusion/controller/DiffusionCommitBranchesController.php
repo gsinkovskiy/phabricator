@@ -6,16 +6,26 @@ final class DiffusionCommitBranchesController extends DiffusionController {
     return true;
   }
 
-  protected function processDiffusionRequest(AphrontRequest $request) {
+  public function handleRequest(AphrontRequest $request) {
+    $response = $this->loadDiffusionContext();
+    if ($response) {
+      return $response;
+    }
+
     $drequest = $this->getDiffusionRequest();
 
-    $branches = $this->callConduitWithDiffusionRequest(
-      'diffusion.branchquery',
-      array(
-        'contains' => $drequest->getCommit(),
-      ));
+    $branch_limit = 10;
+    $branches = DiffusionRepositoryRef::loadAllFromDictionaries(
+      $this->callConduitWithDiffusionRequest(
+        'diffusion.branchquery',
+        array(
+          'contains' => $drequest->getCommit(),
+          'limit' => $branch_limit + 1,
+        )));
 
-    $branches = DiffusionRepositoryRef::loadAllFromDictionaries($branches);
+    $has_more_branches = (count($branches) > $branch_limit);
+    $branches = array_slice($branches, 0, $branch_limit);
+
     $branch_links = array();
     foreach ($branches as $branch) {
       $branch_links[] = phutil_tag(
@@ -28,6 +38,18 @@ final class DiffusionCommitBranchesController extends DiffusionController {
             )),
         ),
         $branch->getShortName());
+    }
+
+    if ($has_more_branches) {
+      $branch_links[] = phutil_tag(
+        'a',
+        array(
+          'href' => $drequest->generateURI(
+            array(
+              'action'  => 'branches',
+            )),
+        ),
+        pht("More Branches\xE2\x80\xA6"));
     }
 
     return id(new AphrontAjaxResponse())

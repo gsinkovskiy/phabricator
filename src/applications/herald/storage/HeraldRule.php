@@ -328,14 +328,6 @@ final class HeraldRule extends HeraldDAO
     return $this->isPersonalRule() && $phid == $this->getAuthorPHID();
   }
 
-  public function shouldShowSubscribersProperty() {
-    return true;
-  }
-
-  public function shouldAllowSubscription($phid) {
-    return true;
-  }
-
 
 /* -(  PhabricatorDestructibleInterface  )----------------------------------- */
 

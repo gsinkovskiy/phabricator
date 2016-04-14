@@ -24,17 +24,8 @@ final class PhamePostViewController
 
     if (!$is_external) {
       $actions = $this->renderActions($post);
-
-      $action_button = id(new PHUIButtonView())
-        ->setTag('a')
-        ->setText(pht('Actions'))
-        ->setHref('#')
-        ->setIconFont('fa-bars')
-        ->addClass('phui-mobile-menu')
-        ->setDropdownMenu($actions);
-
       $header->setPolicyObject($post);
-      $header->addActionLink($action_button);
+      $header->setActionList($actions);
     }
 
     $document = id(new PHUIDocumentViewPro())
@@ -101,9 +92,18 @@ final class PhamePostViewController
       $subtitle = pht('Written by %s on %s.', $author, $date);
     }
 
+    $user_icon = $blogger_profile->getIcon();
+    $user_icon = PhabricatorPeopleIconSet::getIconIcon($user_icon);
+    $user_icon = id(new PHUIIconView())->setIcon($user_icon);
+
     $about = id(new PhameDescriptionView())
       ->setTitle($subtitle)
-      ->setDescription($blogger_profile->getTitle())
+      ->setDescription(
+        array(
+          $user_icon,
+          ' ',
+          $blogger_profile->getTitle(),
+        ))
       ->setImage($blogger->getProfileImageURI())
       ->setImageHref('/p/'.$blogger->getUsername());
 
@@ -120,15 +120,25 @@ final class PhamePostViewController
       $add_comment = phutil_tag_div('mlb mlt', $add_comment);
     }
 
+    list($prev, $next) = $this->loadAdjacentPosts($post);
+
     $properties = id(new PHUIPropertyListView())
       ->setUser($viewer)
       ->setObject($post);
 
-    $properties->invokeWillRenderEvent();
+    $next_view = new PhameNextPostView();
+    if ($next) {
+      $next_view->setNext($next->getTitle(), $next->getViewURI());
+    }
+    if ($prev) {
+      $next_view->setPrevious($prev->getTitle(), $prev->getViewURI());
+    }
 
+    $document->setFoot($next_view);
     $crumbs = $this->buildApplicationCrumbs();
+    $properties = phutil_tag_div('phui-document-view-pro-box', $properties);
 
-    $page =  $this->newPage()
+    $page = $this->newPage()
       ->setTitle($post->getTitle())
       ->setPageObjectPHIDs(array($post->getPHID()))
       ->setCrumbs($crumbs)
@@ -234,6 +244,26 @@ final class PhamePostViewController
       ->setSubmitButtonName(pht('Add Comment'));
 
     return phutil_tag_div('phui-document-view-pro-box', $box);
+  }
+
+  private function loadAdjacentPosts(PhamePost $post) {
+    $viewer = $this->getViewer();
+
+    $query = id(new PhamePostQuery())
+      ->setViewer($viewer)
+      ->withVisibility(PhameConstants::VISIBILITY_PUBLISHED)
+      ->withBlogPHIDs(array($post->getBlog()->getPHID()))
+      ->setLimit(1);
+
+    $prev = id(clone $query)
+      ->setAfterID($post->getID())
+      ->execute();
+
+    $next = id(clone $query)
+      ->setBeforeID($post->getID())
+      ->execute();
+
+    return array(head($prev), head($next));
   }
 
 }

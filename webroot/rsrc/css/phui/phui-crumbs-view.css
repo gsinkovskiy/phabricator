@@ -5,7 +5,7 @@
 .phui-crumbs-view {
   overflow: hidden;
   vertical-align: top;
-  padding: 0 8px 0 16px;
+  padding: 0 20px 0 28px;
   /* TODO: Position this over the slider for Differential's file tree view.
      Remove this once that gets sorted out. */
   position: relative;
@@ -89,12 +89,15 @@
 }
 
 a.phui-crumbs-action .phui-icon-view {
-  margin-right: 5px;
   color: {$darkbluetext};
 }
 
+a.phui-crumbs-action .phui-crumbs-action-name {
+  margin-left: 6px;
+}
+
 .device-phone a.phui-crumbs-action .phui-icon-view {
-  margin-left: 5px;
+  margin-left: 4px;
 }
 
 .phui-crumb-divider {
@@ -102,7 +105,7 @@ a.phui-crumbs-action .phui-icon-view {
 }
 
 .phui-crumbs-view.phui-crumbs-border {
-  border-bottom: 1px solid rgba(55,55,55,.1);
+  border-bottom: 1px solid rgba({$alphagrey},.1);
 }
 
 body .phui-crumbs-view + .phui-object-box {
@@ -111,4 +114,12 @@ body .phui-crumbs-view + .phui-object-box {
 
 body .phui-crumbs-view + .phui-object-item-list-view {
   padding-top: 0;
+}
+
+.phui-crumb-action-divider {
+  border-left: 1px solid {$lightgreyborder};
+}
+
+.phui-crumbs-action-icon + .phui-crumbs-action-icon {
+  padding-left: 4px;
 }

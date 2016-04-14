@@ -54,9 +54,9 @@ final class PhabricatorSearchHovercardController
     $cards = array();
     foreach ($phids as $phid) {
       $handle = $handles[$phid];
-      $object = $objects[$phid];
+      $object = idx($objects, $phid);
 
-      $hovercard = id(new PhabricatorHovercardView())
+      $hovercard = id(new PHUIHovercardView())
         ->setUser($viewer)
         ->setObjectHandle($handle);
 

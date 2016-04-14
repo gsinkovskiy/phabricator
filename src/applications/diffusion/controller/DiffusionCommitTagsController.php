@@ -6,11 +6,15 @@ final class DiffusionCommitTagsController extends DiffusionController {
     return true;
   }
 
-  protected function processDiffusionRequest(AphrontRequest $request) {
+  public function handleRequest(AphrontRequest $request) {
+    $response = $this->loadDiffusionContext();
+    if ($response) {
+      return $response;
+    }
+
     $drequest = $this->getDiffusionRequest();
 
     $tag_limit = 10;
-
     $tags = DiffusionRepositoryTag::newFromConduit(
       $this->callConduitWithDiffusionRequest(
         'diffusion.tagsquery',

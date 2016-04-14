@@ -123,6 +123,11 @@ final class AphrontRequest extends Phobject {
    */
   public function getInt($name, $default = null) {
     if (isset($this->requestData[$name])) {
+      // Converting from array to int is "undefined". Don't rely on whatever
+      // PHP decides to do.
+      if (is_array($this->requestData[$name])) {
+        return $default;
+      }
       return (int)$this->requestData[$name];
     } else {
       return $default;
@@ -537,8 +542,12 @@ final class AphrontRequest extends Phobject {
     return $this->isFormPost() && $this->getStr('__dialog__');
   }
 
-  public function getRemoteAddr() {
-    return $_SERVER['REMOTE_ADDR'];
+  public function getRemoteAddress() {
+    $address = $_SERVER['REMOTE_ADDR'];
+    if (!strlen($address)) {
+      return null;
+    }
+    return substr($address, 0, 64);
   }
 
   public function isHTTPS() {
@@ -745,13 +754,26 @@ final class AphrontRequest extends Phobject {
     // NOTE: apache_request_headers() might provide a nicer way to do this,
     // but isn't available under FCGI until PHP 5.4.0.
     foreach ($_SERVER as $key => $value) {
-      if (preg_match('/^HTTP_/', $key)) {
-        // Unmangle the header as best we can.
-        $key = str_replace('_', ' ', $key);
-        $key = strtolower($key);
-        $key = ucwords($key);
-        $key = str_replace(' ', '-', $key);
+      if (!preg_match('/^HTTP_/', $key)) {
+        continue;
+      }
 
+      // Unmangle the header as best we can.
+      $key = substr($key, strlen('HTTP_'));
+      $key = str_replace('_', ' ', $key);
+      $key = strtolower($key);
+      $key = ucwords($key);
+      $key = str_replace(' ', '-', $key);
+
+      // By default, do not forward headers.
+      $should_forward = false;
+
+      // Forward "X-Hgarg-..." headers.
+      if (preg_match('/^X-Hgarg-/', $key)) {
+        $should_forward = true;
+      }
+
+      if ($should_forward) {
         $headers[] = array($key, $value);
         $seen[$key] = true;
       }

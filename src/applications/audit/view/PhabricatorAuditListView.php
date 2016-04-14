@@ -138,7 +138,7 @@ final class PhabricatorAuditListView extends AphrontView {
     $this->requireResource('aphront-tooltip-css');
 
     $draft_icon = id(new PHUIIconView())
-      ->setIconFont('fa-comment yellow')
+      ->setIcon('fa-comment yellow')
       ->addSigil('has-tooltip')
       ->setMetadata(
         array(
@@ -146,11 +146,11 @@ final class PhabricatorAuditListView extends AphrontView {
         ));
 
     $fix_icon = id(new PHUIIconView())
-      ->setIconFont('fa-wrench green')
+      ->setIcon('fa-wrench green')
       ->addSigil('has-tooltip');
 
     $fixed_by_icon = id(new PHUIIconView())
-      ->setIconFont('fa-medkit green')
+      ->setIcon('fa-medkit green')
       ->addSigil('has-tooltip');
 
     $list = new PHUIObjectItemListView();

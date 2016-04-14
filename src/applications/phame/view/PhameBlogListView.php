@@ -3,16 +3,10 @@
 final class PhameBlogListView extends AphrontTagView {
 
   private $blogs;
-  private $viewer;
 
   public function setBlogs($blogs) {
     assert_instances_of($blogs, 'PhameBlog');
     $this->blogs = $blogs;
-    return $this;
-  }
-
-  public function setViewer($viewer) {
-    $this->viewer = $viewer;
     return $this;
   }
 
@@ -45,7 +39,7 @@ final class PhameBlogListView extends AphrontTagView {
         $blog->getName());
 
       $icon = id(new PHUIIconView())
-        ->setIconFont('fa-plus-square')
+        ->setIcon('fa-plus-square')
         ->addClass('phame-blog-list-icon');
 
       $add_new = phutil_tag(
@@ -72,7 +66,7 @@ final class PhameBlogListView extends AphrontTagView {
       $list = phutil_tag(
         'a',
         array(
-          'href' => '/phame/blog/new/',
+          'href' => '/phame/blog/edit/',
         ),
         pht('Create a Blog'));
     }
@@ -89,7 +83,12 @@ final class PhameBlogListView extends AphrontTagView {
         ),
         pht('Blogs')));
 
-    return array($header, $list);
+    return id(new PHUIBoxView())
+      ->appendChild($header)
+      ->appendChild($list)
+      ->addClass('pl')
+      ->setColor(PHUIBoxView::BLUE);
+
   }
 
 }

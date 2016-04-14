@@ -5,6 +5,27 @@ abstract class PhabricatorSearchEngineAPIMethod
 
   abstract public function newSearchEngine();
 
+  final public function getQueryMaps($query) {
+    $maps = $this->getCustomQueryMaps($query);
+
+    // Make sure we emit empty maps as objects, not lists.
+    foreach ($maps as $key => $map) {
+      if (!$map) {
+        $maps[$key] = (object)$map;
+      }
+    }
+
+    if (!$maps) {
+      $maps = (object)$maps;
+    }
+
+    return $maps;
+  }
+
+  protected function getCustomQueryMaps($query) {
+    return array();
+  }
+
   public function getApplication() {
     $engine = $this->newSearchEngine();
     $class = $engine->getApplicationClassName();
@@ -36,7 +57,7 @@ abstract class PhabricatorSearchEngineAPIMethod
     $engine = $this->newSearchEngine()
       ->setViewer($request->getUser());
 
-    return $engine->buildConduitResponse($request);
+    return $engine->buildConduitResponse($request, $this);
   }
 
   final public function getMethodDescription() {
@@ -130,6 +151,7 @@ EOTEXT
     return id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Builtin and Saved Queries'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($info))
       ->appendChild($table);
   }
@@ -215,6 +237,7 @@ EOTEXT
     return id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Custom Query Constraints'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($info))
       ->appendChild($table);
   }
@@ -321,6 +344,7 @@ EOTEXT
     return id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Result Ordering'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($orders_info))
       ->appendChild($orders_table)
       ->appendChild($this->buildRemarkup($columns_info))
@@ -401,6 +425,7 @@ EOTEXT
     return id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Object Fields'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($info))
       ->appendChild($table);
   }
@@ -489,6 +514,7 @@ EOTEXT
     return id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Attachments'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($info))
       ->appendChild($table);
   }
@@ -559,6 +585,7 @@ EOTEXT
     return id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Paging and Limits'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($info));
   }
 

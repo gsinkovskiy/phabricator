@@ -14,7 +14,7 @@ final class PhabricatorPonderApplication extends PhabricatorApplication {
     return pht('Questions and Answers');
   }
 
-  public function getFontIcon() {
+  public function getIcon() {
     return 'fa-university';
   }
 
@@ -49,8 +49,6 @@ final class PhabricatorPonderApplication extends PhabricatorApplication {
           => 'PonderAnswerCommentController',
         'answer/history/(?P<id>\d+)/'
           => 'PonderAnswerHistoryController',
-        'answer/helpful/(?P<action>add|remove)/(?P<id>[1-9]\d*)/'
-          => 'PonderHelpfulSaveController',
         'question/edit/(?:(?P<id>\d+)/)?'
           => 'PonderQuestionEditController',
         'question/create/'

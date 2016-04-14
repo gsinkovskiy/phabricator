@@ -4,7 +4,6 @@ final class PhameDraftListView extends AphrontTagView {
 
   private $posts;
   private $blogs;
-  private $viewer;
 
   public function setPosts($posts) {
     assert_instances_of($posts, 'PhamePost');
@@ -15,11 +14,6 @@ final class PhameDraftListView extends AphrontTagView {
   public function setBlogs($blogs) {
     assert_instances_of($blogs, 'PhameBlog');
     $this->blogs = $blogs;
-    return $this;
-  }
-
-  public function setViewer($viewer) {
-    $this->viewer = $viewer;
     return $this;
   }
 
@@ -53,7 +47,7 @@ final class PhameDraftListView extends AphrontTagView {
         $post->getTitle());
 
       $icon = id(new PHUIIconView())
-        ->setIconFont('fa-pencil-square-o')
+        ->setIcon('fa-pencil-square-o')
         ->addClass('phame-blog-list-icon');
 
       $edit = phutil_tag(
@@ -92,7 +86,11 @@ final class PhameDraftListView extends AphrontTagView {
         ),
         pht('Drafts')));
 
-    return array($header, $list);
+    return id(new PHUIBoxView())
+      ->appendChild($header)
+      ->appendChild($list)
+      ->addClass('pl')
+      ->setColor(PHUIBoxView::BLUE);
   }
 
 }

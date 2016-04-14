@@ -148,18 +148,14 @@ JX.behavior('comment-actions', function(config) {
     } else {
       JX.DOM.setContent(
         JX.$(config.timelineID),
-        [
-          JX.$H(response.spacer),
-          JX.$H(response.xactions.join(response.spacer))
-        ]);
+        JX.$H(response.xactions.join('')));
       JX.DOM.show(panel);
     }
   }
 
-  JX.DOM.listen(form_node, 'submit', null, function() {
+  JX.DOM.listen(form_node, ['submit', 'didSyntheticSubmit'], null, function() {
     input_node.value = serialize_actions();
   });
-
 
   if (config.showPreview) {
     var request = new JX.PhabricatorShapedRequest(

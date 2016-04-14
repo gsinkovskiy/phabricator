@@ -35,6 +35,12 @@ JX.install('PHUIXFormControl', {
         case 'select':
           input = this._newSelect(spec);
           break;
+        case 'points':
+          input = this._newPoints(spec);
+          break;
+        case 'optgroups':
+          input = this._newOptgroups(spec);
+          break;
         default:
           // TODO: Default or better error?
           JX.$E('Bad Input Type');
@@ -148,6 +154,57 @@ JX.install('PHUIXFormControl', {
         spec.value,
         {},
         spec.order);
+
+      return {
+        node: node,
+        get: function() {
+          return node.value;
+        },
+        set: function(value) {
+          node.value = value;
+        }
+      };
+    },
+
+    _newPoints: function(spec) {
+      var attrs = {
+        type: 'text',
+        value: spec.value
+      };
+
+      var node = JX.$N('input', attrs);
+
+      return {
+        node: node,
+        get: function() {
+          return node.value;
+        },
+        set: function(value) {
+          node.value = value;
+        }
+      };
+    },
+
+    _newOptgroups: function(spec) {
+      var value = spec.value || null;
+
+      var optgroups = [];
+      for (var ii = 0; ii < spec.groups.length; ii++) {
+        var group = spec.groups[ii];
+        var options = [];
+        for (var jj = 0; jj < group.options.length; jj++) {
+          var option = group.options[jj];
+          options.push(JX.$N('option', {value: option.key}, option.label));
+
+          if (option.selected && (value === null)) {
+            value = option.key;
+          }
+        }
+        optgroups.push(JX.$N('optgroup', {label: group.label}, options));
+      }
+
+      var node = JX.$N('select', {}, optgroups);
+      node.value = value;
 
       return {
         node: node,

@@ -35,7 +35,7 @@ final class DifferentialHovercardEngineExtension
   }
 
   public function renderHovercard(
-    PhabricatorHovercardView $hovercard,
+    PHUIHovercardView $hovercard,
     PhabricatorObjectHandle $handle,
     $object,
     $data) {
@@ -70,8 +70,6 @@ final class DifferentialHovercardEngineExtension
       $hovercard->addField(pht('Summary'), $summary);
     }
 
-    $tag = DifferentialRevisionDetailView::renderTagForRevision($revision);
-    $hovercard->addTag($tag);
   }
 
 }

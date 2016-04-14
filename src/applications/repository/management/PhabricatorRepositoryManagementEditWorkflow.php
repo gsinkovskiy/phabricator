@@ -9,8 +9,7 @@ final class PhabricatorRepositoryManagementEditWorkflow
       ->setExamples('**edit** --as __username__ __repository__ ...')
       ->setSynopsis(
         pht(
-          'Edit __repository__, named by callsign '.
-          '(will eventually be deprecated by Conduit).'))
+          'Edit __repository__ (will eventually be deprecated by Conduit).'))
       ->setArguments(
         array(
           array(
@@ -45,7 +44,7 @@ final class PhabricatorRepositoryManagementEditWorkflow
 
     if (!$repos) {
       throw new PhutilArgumentUsageException(
-        pht('Specify one or more repositories to edit, by callsign.'));
+        pht('Specify one or more repositories to edit.'));
     }
 
     $console = PhutilConsole::getConsole();
@@ -76,7 +75,11 @@ final class PhabricatorRepositoryManagementEditWorkflow
     }
 
     foreach ($repos as $repo) {
-      $console->writeOut("%s\n", pht("Editing '%s'...", $repo->getCallsign()));
+      $console->writeOut(
+        "%s\n",
+        pht(
+          'Editing "%s"...',
+          $repo->getDisplayName()));
 
       $xactions = array();
 
@@ -114,7 +117,7 @@ final class PhabricatorRepositoryManagementEditWorkflow
           pht('Specify one or more fields to edit!'));
       }
 
-      $content_source = PhabricatorContentSource::newConsoleSource();
+      $content_source = $this->newContentSource();
 
       $editor = id(new PhabricatorRepositoryEditor())
         ->setActor($actor)

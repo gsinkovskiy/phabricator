@@ -50,7 +50,6 @@ final class DiffusionQueryPathsConduitAPIMethod
       $commit,
       $path);
 
-
     $lines = id(new LinesOfALargeExecFuture($future))->setDelimiter("\0");
     return $this->filterResults($lines, $request);
   }
@@ -165,22 +164,22 @@ final class DiffusionQueryPathsConduitAPIMethod
     $offset = (int)$request->getValue('offset');
 
     if (strlen($pattern)) {
-      $pattern = '/'.preg_quote($pattern, '/').'/';
+      // Add delimiters to the regex pattern.
+      $pattern = '('.$pattern.')';
     }
 
     $results = array();
     $count = 0;
     foreach ($lines as $line) {
-      if (!$pattern || preg_match($pattern, $line)) {
-        if ($count >= $offset) {
-          $results[] = $line;
-        }
+      if (strlen($pattern) && !preg_match($pattern, $line)) {
+        continue;
+      }
 
-        $count++;
+      $results[] = $line;
+      $count++;
 
-        if ($limit && ($count >= ($offset + $limit))) {
-          break;
-        }
+      if ($limit && ($count >= ($offset + $limit))) {
+        break;
       }
     }
 

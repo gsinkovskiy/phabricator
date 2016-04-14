@@ -27,7 +27,6 @@ final class PhabricatorFile extends PhabricatorFileDAO
     PhabricatorPolicyInterface,
     PhabricatorDestructibleInterface {
 
-  const ONETIME_TEMPORARY_TOKEN_TYPE = 'file:onetime';
   const STORAGE_FORMAT_RAW  = 'raw';
 
   const METADATA_IMAGE_WIDTH  = 'width';
@@ -58,6 +57,7 @@ final class PhabricatorFile extends PhabricatorFileDAO
   private $objects = self::ATTACHABLE;
   private $objectPHIDs = self::ATTACHABLE;
   private $originalFile = self::ATTACHABLE;
+  private $transforms = self::ATTACHABLE;
 
   public static function initializeNewFile() {
     $app = id(new PhabricatorApplicationQuery())
@@ -139,6 +139,10 @@ final class PhabricatorFile extends PhabricatorFileDAO
 
   public function getMonogram() {
     return 'F'.$this->getID();
+  }
+
+  public function scrambleSecret() {
+    return $this->setSecretKey($this->generateSecretKey());
   }
 
   public static function readUploadedFileData($spec) {
@@ -695,10 +699,10 @@ final class PhabricatorFile extends PhabricatorFileDAO
         pht('You must save a file before you can generate a view URI.'));
     }
 
-    return $this->getCDNURI(null);
+    return $this->getCDNURI();
   }
 
-  private function getCDNURI($token) {
+  public function getCDNURI() {
     $name = self::normalizeFileName($this->getName());
     $name = phutil_escape_uri($name);
 
@@ -718,9 +722,6 @@ final class PhabricatorFile extends PhabricatorFileDAO
 
     $parts[] = $this->getSecretKey();
     $parts[] = $this->getPHID();
-    if ($token) {
-      $parts[] = $token;
-    }
     $parts[] = $name;
 
     $path = '/'.implode('/', $parts);
@@ -733,19 +734,6 @@ final class PhabricatorFile extends PhabricatorFileDAO
     } else {
       return PhabricatorEnv::getCDNURI($path);
     }
-  }
-
-  /**
-   * Get the CDN URI for this file, including a one-time-use security token.
-   *
-   */
-  public function getCDNURIWithToken() {
-    if (!$this->getPHID()) {
-      throw new Exception(
-        pht('You must save a file before you can generate a CDN URI.'));
-    }
-
-    return $this->getCDNURI($this->generateOneTimeToken());
   }
 
 
@@ -962,16 +950,18 @@ final class PhabricatorFile extends PhabricatorFileDAO
    * Builtins are located in `resources/builtin/` and identified by their
    * name.
    *
-   * @param  PhabricatorUser                Viewing user.
-   * @param  list<string>                   List of builtin file names.
-   * @return dict<string, PhabricatorFile>  Dictionary of named builtins.
+   * @param  PhabricatorUser Viewing user.
+   * @param  list<PhabricatorFilesBuiltinFile> List of builtin file specs.
+   * @return dict<string, PhabricatorFile> Dictionary of named builtins.
    */
-  public static function loadBuiltins(PhabricatorUser $user, array $names) {
+  public static function loadBuiltins(PhabricatorUser $user, array $builtins) {
+    $builtins = mpull($builtins, null, 'getBuiltinFileKey');
+
     $specs = array();
-    foreach ($names as $name) {
+    foreach ($builtins as $key => $buitin) {
       $specs[] = array(
         'originalPHID' => PhabricatorPHIDConstants::PHID_VOID,
-        'transform'    => 'builtin:'.$name,
+        'transform'    => $key,
       );
     }
 
@@ -982,41 +972,34 @@ final class PhabricatorFile extends PhabricatorFileDAO
       ->withTransforms($specs)
       ->execute();
 
-    $files = mpull($files, null, 'getName');
-
-    $root = dirname(phutil_get_library_root('phabricator'));
-    $root = $root.'/resources/builtin/';
+    $results = array();
+    foreach ($files as $file) {
+      $builtin_key = $file->getBuiltinName();
+      if ($builtin_key !== null) {
+        $results[$builtin_key] = $file;
+      }
+    }
 
     $build = array();
-    foreach ($names as $name) {
-      if (isset($files[$name])) {
+    foreach ($builtins as $key => $builtin) {
+      if (isset($results[$key])) {
         continue;
       }
 
-      // This is just a sanity check to prevent loading arbitrary files.
-      if (basename($name) != $name) {
-        throw new Exception(pht("Invalid builtin name '%s'!", $name));
-      }
+      $data = $builtin->loadBuiltinFileData();
 
-      $path = $root.$name;
-
-      if (!Filesystem::pathExists($path)) {
-        throw new Exception(pht("Builtin '%s' does not exist!", $path));
-      }
-
-      $data = Filesystem::readFile($path);
       $params = array(
-        'name' => $name,
+        'name' => $builtin->getBuiltinDisplayName(),
         'ttl'  => time() + (60 * 60 * 24 * 7),
         'canCDN' => true,
-        'builtin' => $name,
+        'builtin' => $key,
       );
 
       $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
         $file = self::newFromFileData($data, $params);
         $xform = id(new PhabricatorTransformedFile())
           ->setOriginalPHID(PhabricatorPHIDConstants::PHID_VOID)
-          ->setTransform('builtin:'.$name)
+          ->setTransform($key)
           ->setTransformedPHID($file->getPHID())
           ->save();
       unset($unguarded);
@@ -1024,10 +1007,10 @@ final class PhabricatorFile extends PhabricatorFileDAO
       $file->attachObjectPHIDs(array());
       $file->attachObjects(array());
 
-      $files[$name] = $file;
+      $results[$key] = $file;
     }
 
-    return $files;
+    return $results;
   }
 
 
@@ -1039,7 +1022,12 @@ final class PhabricatorFile extends PhabricatorFileDAO
    * @return PhabricatorFile  Corresponding builtin file.
    */
   public static function loadBuiltin(PhabricatorUser $user, $name) {
-    return idx(self::loadBuiltins($user, array($name)), $name);
+    $builtin = id(new PhabricatorFilesOnDiskBuiltinFile())
+      ->setName($name);
+
+    $key = $builtin->getBuiltinFileKey();
+
+    return idx(self::loadBuiltins($user, array($builtin)), $key);
   }
 
   public function getObjects() {
@@ -1117,35 +1105,6 @@ final class PhabricatorFile extends PhabricatorFileDAO
     $this->metadata[self::METADATA_PROFILE] = $value;
     return $this;
   }
-
-  protected function generateOneTimeToken() {
-    $key = Filesystem::readRandomCharacters(16);
-
-    // Save the new secret.
-    $unguarded = AphrontWriteGuard::beginScopedUnguardedWrites();
-      $token = id(new PhabricatorAuthTemporaryToken())
-        ->setObjectPHID($this->getPHID())
-        ->setTokenType(self::ONETIME_TEMPORARY_TOKEN_TYPE)
-        ->setTokenExpires(time() + phutil_units('1 hour in seconds'))
-        ->setTokenCode(PhabricatorHash::digest($key))
-        ->save();
-    unset($unguarded);
-
-    return $key;
-  }
-
-  public function validateOneTimeToken($token_code) {
-    $token = id(new PhabricatorAuthTemporaryTokenQuery())
-      ->setViewer(PhabricatorUser::getOmnipotentUser())
-      ->withObjectPHIDs(array($this->getPHID()))
-      ->withTokenTypes(array(self::ONETIME_TEMPORARY_TOKEN_TYPE))
-      ->withExpired(false)
-      ->withTokenCodes(array(PhabricatorHash::digest($token_code)))
-      ->executeOne();
-
-    return $token;
-  }
-
 
   /**
    * Write the policy edge between this file and some object.
@@ -1251,6 +1210,15 @@ final class PhabricatorFile extends PhabricatorFileDAO
       ->setURI($uri);
   }
 
+  public function attachTransforms(array $map) {
+    $this->transforms = $map;
+    return $this;
+  }
+
+  public function getTransform($key) {
+    return $this->assertAttachedKey($this->transforms, $key);
+  }
+
 
 /* -(  PhabricatorApplicationTransactionInterface  )------------------------- */
 
@@ -1347,14 +1315,6 @@ final class PhabricatorFile extends PhabricatorFileDAO
 
   public function isAutomaticallySubscribed($phid) {
     return ($this->authorPHID == $phid);
-  }
-
-  public function shouldShowSubscribersProperty() {
-    return true;
-  }
-
-  public function shouldAllowSubscription($phid) {
-    return true;
   }
 
 

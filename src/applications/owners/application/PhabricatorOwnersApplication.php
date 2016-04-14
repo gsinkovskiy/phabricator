@@ -10,7 +10,7 @@ final class PhabricatorOwnersApplication extends PhabricatorApplication {
     return '/owners/';
   }
 
-  public function getFontIcon() {
+  public function getIcon() {
     return 'fa-gift';
   }
 
@@ -50,6 +50,21 @@ final class PhabricatorOwnersApplication extends PhabricatorApplication {
 
         $this->getEditRoutePattern('edit/')
           => 'PhabricatorOwnersEditController',
+      ),
+    );
+  }
+
+  protected function getCustomCapabilities() {
+    return array(
+      PhabricatorOwnersDefaultViewCapability::CAPABILITY => array(
+        'caption' => pht('Default view policy for newly created packages.'),
+        'template' => PhabricatorOwnersPackagePHIDType::TYPECONST,
+        'capability' => PhabricatorPolicyCapability::CAN_VIEW,
+      ),
+      PhabricatorOwnersDefaultEditCapability::CAPABILITY => array(
+        'caption' => pht('Default edit policy for newly created packages.'),
+        'template' => PhabricatorOwnersPackagePHIDType::TYPECONST,
+        'capability' => PhabricatorPolicyCapability::CAN_EDIT,
       ),
     );
   }

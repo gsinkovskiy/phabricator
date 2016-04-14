@@ -23,23 +23,21 @@ final class PhabricatorConfigListController
       ->setHeaderText(pht('Applications Configuration'))
       ->setObjectList($apps_list);
 
-    $nav->appendChild(
-      array(
-        $core,
-        $apps,
-      ));
-
     $crumbs = $this
       ->buildApplicationCrumbs()
       ->addTextCrumb(pht('Config'), $this->getApplicationURI());
 
-    $nav->setCrumbs($crumbs);
-
-    return $this->buildApplicationPage(
-      $nav,
-      array(
-        'title' => $title,
+    $view = id(new PHUITwoColumnView())
+      ->setNavigation($nav)
+      ->setMainColumn(array(
+        $core,
+        $apps,
       ));
+
+    return $this->newPage()
+      ->setTitle($title)
+      ->setCrumbs($crumbs)
+      ->appendChild($view);
   }
 
   private function buildConfigOptionsList(array $groups, $type) {
@@ -53,7 +51,7 @@ final class PhabricatorConfigListController
           ->setHeader($group->getName())
           ->setHref('/config/group/'.$group->getKey().'/')
           ->addAttribute($group->getDescription())
-          ->setFontIcon($group->getFontIcon());
+          ->setIcon($group->getIcon());
         $list->addItem($item);
       }
     }
