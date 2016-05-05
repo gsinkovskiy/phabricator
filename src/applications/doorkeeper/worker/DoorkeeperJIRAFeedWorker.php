@@ -105,13 +105,14 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
 
     preg_match(
-      '/^\[([^\]]*?)\] (.*?): (.*)$/',
+      '/^(.*?): (.*)$/',
       $publisher->getObjectTitle($object),
       $regs);
 
+    $icon_uri = celerity_get_resource_uri('rsrc/favicons/favicon-16x16.png');
+
     $post_data = array(
-      'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.
-        $object->getPHID(),
+      'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.$object->getPHID(),
       'application' => array(
         'type' => 'com.phacility.phabricator',
         'name' => 'Phabricator',
@@ -119,14 +120,14 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
       'relationship' => 'implemented in',
       'object' => array(
         'url' => $publisher->getObjectURI($object),
-        'title' => $regs[2], // Object identifier (e.g. D3).
-        'summary' => $regs[3], // Object title.
+        'title' => $regs[1], // Object identifier (e.g. D3).
+        'summary' => $regs[2], // Object title.
         'icon' => array(
-          'url16x16' => $base_uri.'/favicon.ico',
-          'title' => $regs[1], // Application name (e.g. Differential).
+          'url16x16' => $icon_uri,
+          'title' => 'Phabricator',
         ),
         'status' => array(
-          'resolved' => $publisher->isObjectClosed($object)
+          'resolved' => $publisher->isObjectClosed($object),
         ),
       ),
     );
