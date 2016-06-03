@@ -16,6 +16,8 @@ final class PhabricatorAuditListView extends AphrontView {
   private $inverseMentionMap = array();
   private $inverseMentionCommits = array();
 
+  private $timeEvents = array();
+
   public function setHandles(array $handles) {
     assert_instances_of($handles, 'PhabricatorObjectHandle');
     $this->handles = $handles;
@@ -117,6 +119,7 @@ final class PhabricatorAuditListView extends AphrontView {
     $this->prepareTransactions();
     $this->prepareAuditorInformation();
     $this->prepareInverseMentions();
+    $this->prepareTimeTracking();
 
     $modification_dates = $this->getCommitsDateModified();
 
@@ -152,6 +155,15 @@ final class PhabricatorAuditListView extends AphrontView {
     $fixed_by_icon = id(new PHUIIconView())
       ->setIcon('fa-medkit green')
       ->addSigil('has-tooltip');
+
+    $clock_icon = id(new PHUIIconView())
+      ->setIcon('fa-clock-o pink')
+      ->addSigil('has-tooltip')
+      ->setMetadata(
+        array(
+          'tip' => pht('Time Spent'),
+        ))
+      ->producePhutilSafeHTML();
 
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
@@ -263,6 +275,16 @@ final class PhabricatorAuditListView extends AphrontView {
 
       $item->addAttribute(pht('Author: %s', $author_name));
       $item->addAttribute($reasons);
+
+      $time_spent = $this->getTimeSpent($commit_phid);
+
+      if ($time_spent) {
+        $item->addAttribute(pht(
+          '%s %s',
+          $clock_icon,
+          phutil_format_relative_time_detailed($time_spent)
+        ));
+      }
 
       $auditors = idx($this->commitAuditorsHTML, $commit_phid, array());
       if (!empty($auditors)) {
@@ -452,5 +474,52 @@ final class PhabricatorAuditListView extends AphrontView {
         PhabricatorTransactions::TYPE_EDGE,
       ))
       ->execute();
+  }
+
+  private function prepareTimeTracking() {
+    $concern_raised_commits = $this->getConcernRaisedCommits();
+
+    if (!$concern_raised_commits) {
+      $this->timeEvents = array();
+
+      return;
+    }
+
+    $events = id(new PhrequentUserTimeQuery())
+      ->setViewer($this->getUser())
+      ->withObjectPHIDs($concern_raised_commits)
+      ->needPreemptingEvents(true)
+      ->execute();
+
+    $this->timeEvents = mgroup($events, 'getObjectPHID');
+  }
+
+  private function getTimeSpent($commit_phid)
+  {
+    $events = idx($this->timeEvents, $commit_phid);
+
+    if (!$events) {
+      return null;
+    }
+
+    $block = new PhrequentTimeBlock($events);
+
+    return $block->getTimeSpentOnObject(
+      $commit_phid, PhabricatorTime::getNow());
+  }
+
+
+  private function getConcernRaisedCommits() {
+    if (!$this->commits) {
+      return array();
+    }
+
+    $commits = id(new DiffusionCommitQuery())
+      ->setViewer($this->getUser())
+      ->withPHIDs(array_keys($this->commits))
+      ->withAuditStatus(DiffusionCommitQuery::AUDIT_STATUS_CONCERN)
+      ->execute();
+
+    return mpull($commits, 'getPHID');
   }
 }
