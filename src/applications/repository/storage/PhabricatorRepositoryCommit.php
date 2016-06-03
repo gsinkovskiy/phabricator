@@ -11,6 +11,7 @@ final class PhabricatorRepositoryCommit
     PhabricatorTokenReceiverInterface,
     PhabricatorSubscribableInterface,
     PhabricatorMentionableInterface,
+    PhrequentTrackableInterface,
     HarbormasterBuildableInterface,
     HarbormasterCircleCIBuildableInterface,
     PhabricatorCustomFieldInterface,
