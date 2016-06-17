@@ -4,7 +4,6 @@ final class PhamePostListView extends AphrontTagView {
 
   private $posts;
   private $nodata;
-  private $viewer;
   private $showBlog = false;
   private $isExternal;
   private $isLive;
@@ -22,11 +21,6 @@ final class PhamePostListView extends AphrontTagView {
 
   public function showBlog($show) {
     $this->showBlog = $show;
-    return $this;
-  }
-
-  public function setViewer($viewer) {
-    $this->viewer = $viewer;
     return $this;
   }
 
@@ -53,7 +47,7 @@ final class PhamePostListView extends AphrontTagView {
   }
 
   protected function getTagContent() {
-    $viewer = $this->viewer;
+    $viewer = $this->getViewer();
     $posts = $this->posts;
     $nodata = $this->nodata;
 
@@ -68,8 +62,19 @@ final class PhamePostListView extends AphrontTagView {
 
     $list = array();
     foreach ($posts as $post) {
-      $blogger = $handles[$post->getBloggerPHID()]->renderLink();
+      $blogger_name = $handles[$post->getBloggerPHID()]->getName();
       $blogger_uri = $handles[$post->getBloggerPHID()]->getURI();
+      $blogger_uri = PhabricatorEnv::getURI($blogger_uri);
+
+      // Render a link manually to make sure we point at the correct domain.
+      $blogger = phutil_tag(
+        'a',
+        array(
+          'href' => $blogger_uri,
+        ),
+        $blogger_name);
+      $blogger = phutil_tag('strong', array(), $blogger);
+
       $blogger_image = $handles[$post->getBloggerPHID()]->getImageURI();
 
       $phame_post = null;
@@ -80,7 +85,6 @@ final class PhamePostListView extends AphrontTagView {
         $phame_post = phutil_tag('em', array(), pht('(Empty Post)'));
       }
 
-      $blogger = phutil_tag('strong', array(), $blogger);
       $date = phabricator_datetime($post->getDatePublished(), $viewer);
 
       $blog = $post->getBlog();

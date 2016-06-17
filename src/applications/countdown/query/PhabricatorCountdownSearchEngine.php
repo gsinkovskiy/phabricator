@@ -30,20 +30,18 @@ final class PhabricatorCountdownSearchEngine
   }
 
   protected function buildCustomSearchFields() {
-
     return array(
-        id(new PhabricatorUsersSearchField())
-          ->setLabel(pht('Authors'))
-          ->setKey('authorPHIDs')
-          ->setAliases(array('author', 'authors')),
-
-        id(new PhabricatorSearchCheckboxesField())
-          ->setKey('upcoming')
-          ->setOptions(array(
+      id(new PhabricatorUsersSearchField())
+        ->setLabel(pht('Authors'))
+        ->setKey('authorPHIDs')
+        ->setAliases(array('author', 'authors')),
+      id(new PhabricatorSearchCheckboxesField())
+        ->setKey('upcoming')
+        ->setOptions(
+          array(
             'upcoming' => pht('Show only upcoming countdowns.'),
           )),
-      );
-
+    );
   }
 
   protected function getURI($path) {
@@ -149,7 +147,7 @@ final class PhabricatorCountdownSearchEngine
     $create_button = id(new PHUIButtonView())
       ->setTag('a')
       ->setText(pht('Create a Countdown'))
-      ->setHref('/countdown/create/')
+      ->setHref('/countdown/edit/')
       ->setColor(PHUIButtonView::GREEN);
 
     $icon = $this->getApplication()->getIcon();

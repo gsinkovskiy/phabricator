@@ -10,6 +10,7 @@ final class PhabricatorRepositoryCommit
     PhabricatorSubscribableInterface,
     PhabricatorMentionableInterface,
     HarbormasterBuildableInterface,
+    HarbormasterCircleCIBuildableInterface,
     PhabricatorCustomFieldInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorFulltextInterface {
@@ -31,6 +32,7 @@ final class PhabricatorRepositoryCommit
   const IMPORTED_ALL = 15;
 
   const IMPORTED_CLOSEABLE = 1024;
+  const IMPORTED_UNREACHABLE = 2048;
 
   private $commitData = self::ATTACHABLE;
   private $audits = self::ATTACHABLE;
@@ -57,14 +59,43 @@ final class PhabricatorRepositoryCommit
     return $this->isPartiallyImported(self::IMPORTED_ALL);
   }
 
+  public function isUnreachable() {
+    return $this->isPartiallyImported(self::IMPORTED_UNREACHABLE);
+  }
+
   public function writeImportStatusFlag($flag) {
-    queryfx(
-      $this->establishConnection('w'),
-      'UPDATE %T SET importStatus = (importStatus | %d) WHERE id = %d',
-      $this->getTableName(),
-      $flag,
-      $this->getID());
-    $this->setImportStatus($this->getImportStatus() | $flag);
+    return $this->adjustImportStatusFlag($flag, true);
+  }
+
+  public function clearImportStatusFlag($flag) {
+    return $this->adjustImportStatusFlag($flag, false);
+  }
+
+  private function adjustImportStatusFlag($flag, $set) {
+    $conn_w = $this->establishConnection('w');
+    $table_name = $this->getTableName();
+    $id = $this->getID();
+
+    if ($set) {
+      queryfx(
+        $conn_w,
+        'UPDATE %T SET importStatus = (importStatus | %d) WHERE id = %d',
+        $table_name,
+        $flag,
+        $id);
+
+      $this->setImportStatus($this->getImportStatus() | $flag);
+    } else {
+      queryfx(
+        $conn_w,
+        'UPDATE %T SET importStatus = (importStatus & ~%d) WHERE id = %d',
+        $table_name,
+        $flag,
+        $id);
+
+      $this->setImportStatus($this->getImportStatus() & ~$flag);
+    }
+
     return $this;
   }
 
@@ -408,6 +439,52 @@ final class PhabricatorRepositoryCommit
       'repository.uri' =>
         pht('The URI to clone or checkout the repository from.'),
     );
+  }
+
+
+/* -(  HarbormasterCircleCIBuildableInterface  )----------------------------- */
+
+
+  public function getCircleCIGitHubRepositoryURI() {
+    $repository = $this->getRepository();
+
+    $commit_phid = $this->getPHID();
+    $repository_phid = $repository->getPHID();
+
+    if ($repository->isHosted()) {
+      throw new Exception(
+        pht(
+          'This commit ("%s") is associated with a hosted repository '.
+          '("%s"). Repositories must be imported from GitHub to be built '.
+          'with CircleCI.',
+          $commit_phid,
+          $repository_phid));
+    }
+
+    $remote_uri = $repository->getRemoteURI();
+    $path = HarbormasterCircleCIBuildStepImplementation::getGitHubPath(
+      $remote_uri);
+    if (!$path) {
+      throw new Exception(
+        pht(
+          'This commit ("%s") is associated with a repository ("%s") that '.
+          'with a remote URI ("%s") that does not appear to be hosted on '.
+          'GitHub. Repositories must be hosted on GitHub to be built with '.
+          'CircleCI.',
+          $commit_phid,
+          $repository_phid,
+          $remote_uri));
+    }
+
+    return $remote_uri;
+  }
+
+  public function getCircleCIBuildIdentifierType() {
+    return 'revision';
+  }
+
+  public function getCircleCIBuildIdentifier() {
+    return $this->getCommitIdentifier();
   }
 
 

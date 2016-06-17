@@ -3,10 +3,6 @@
 final class PhabricatorMustVerifyEmailController
   extends PhabricatorAuthController {
 
-  public function shouldRequireLogin() {
-    return false;
-  }
-
   public function shouldRequireEmailVerification() {
     // NOTE: We don't technically need this since PhabricatorController forces
     // us here in either case, but it's more consistent with intent.
@@ -53,14 +49,15 @@ final class PhabricatorMustVerifyEmailController
       ->appendParagraph($send_again)
       ->addSubmitButton(pht('Send Another Email'));
 
-    return $this->buildApplicationPage(
-      array(
-        $sent,
-        $dialog,
-      ),
-      array(
-        'title' => pht('Must Verify Email'),
-      ));
+    $view = array(
+      $sent,
+      $dialog,
+    );
+
+    return $this->newPage()
+      ->setTitle(pht('Must Verify Email'))
+      ->appendChild($view);
+
   }
 
 }

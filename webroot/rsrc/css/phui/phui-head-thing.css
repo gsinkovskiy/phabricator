@@ -6,11 +6,14 @@
   height: 24px;
   line-height: 22px;
   color: {$greytext};
+}
+
+.phui-head-thing-view.phui-head-has-image {
   position: relative;
   padding-left: 32px;
 }
 
-.device-phone .phui-head-thing-view {
+.device-phone .phui-two-column-subheader .phui-head-thing-view {
   min-height: 24px;
   height: auto;
   line-height: inherit;

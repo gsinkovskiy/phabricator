@@ -35,7 +35,7 @@ final class PhabricatorPasteEditEngine
   }
 
   protected function getObjectEditTitleText($object) {
-    return pht('Edit %s %s', $object->getMonogram(), $object->getTitle());
+    return pht('Edit Paste: %s', $object->getTitle());
   }
 
   protected function getObjectEditShortText($object) {
@@ -44,6 +44,10 @@ final class PhabricatorPasteEditEngine
 
   protected function getObjectCreateShortText() {
     return pht('Create Paste');
+  }
+
+  protected function getObjectName() {
+    return pht('Paste');
   }
 
   protected function getCommentViewHeaderText($object) {
@@ -67,7 +71,7 @@ final class PhabricatorPasteEditEngine
       id(new PhabricatorTextEditField())
         ->setKey('title')
         ->setLabel(pht('Title'))
-        ->setTransactionType(PhabricatorPasteTransaction::TYPE_TITLE)
+        ->setTransactionType(PhabricatorPasteTitleTransaction::TRANSACTIONTYPE)
         ->setDescription(pht('The title of the paste.'))
         ->setConduitDescription(pht('Retitle the paste.'))
         ->setConduitTypeDescription(pht('New paste title.'))
@@ -75,7 +79,8 @@ final class PhabricatorPasteEditEngine
       id(new PhabricatorSelectEditField())
         ->setKey('language')
         ->setLabel(pht('Language'))
-        ->setTransactionType(PhabricatorPasteTransaction::TYPE_LANGUAGE)
+        ->setTransactionType(
+          PhabricatorPasteLanguageTransaction::TRANSACTIONTYPE)
         ->setAliases(array('lang'))
         ->setIsCopyable(true)
         ->setOptions($langs)
@@ -90,7 +95,8 @@ final class PhabricatorPasteEditEngine
       id(new PhabricatorTextAreaEditField())
         ->setKey('text')
         ->setLabel(pht('Text'))
-        ->setTransactionType(PhabricatorPasteTransaction::TYPE_CONTENT)
+        ->setTransactionType(
+          PhabricatorPasteContentTransaction::TRANSACTIONTYPE)
         ->setMonospaced(true)
         ->setHeight(AphrontFormTextAreaControl::HEIGHT_VERY_TALL)
         ->setDescription(pht('The main body text of the paste.'))
@@ -100,7 +106,8 @@ final class PhabricatorPasteEditEngine
       id(new PhabricatorSelectEditField())
         ->setKey('status')
         ->setLabel(pht('Status'))
-        ->setTransactionType(PhabricatorPasteTransaction::TYPE_STATUS)
+        ->setTransactionType(
+          PhabricatorPasteStatusTransaction::TRANSACTIONTYPE)
         ->setIsConduitOnly(true)
         ->setOptions(PhabricatorPaste::getStatusNameMap())
         ->setDescription(pht('Active or archived status.'))

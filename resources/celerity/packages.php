@@ -76,10 +76,13 @@ return array(
     'javelin-quicksand',
     'javelin-behavior-quicksand-blacklist',
     'javelin-behavior-high-security-warning',
+    'javelin-behavior-read-only-warning',
     'javelin-scrollbar',
     'javelin-behavior-scrollbar',
     'javelin-behavior-durable-column',
     'conpherence-thread-manager',
+    'javelin-behavior-detect-timezone',
+    'javelin-behavior-setup-check-https',
   ),
   'core.pkg.css' => array(
     'phabricator-core-css',
@@ -96,6 +99,7 @@ return array(
 
     'phabricator-remarkup-css',
     'syntax-highlighting-css',
+    'syntax-default-css',
     'phui-pager-css',
     'aphront-tooltip-css',
     'phabricator-flag-css',

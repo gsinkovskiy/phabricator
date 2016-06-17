@@ -16,7 +16,10 @@ abstract class PhabricatorEditEngineAPIMethod
   }
 
   public function getMethodStatusDescription() {
-    return pht('ApplicationEditor methods are highly unstable.');
+    return pht(
+      'ApplicationEditor methods are fairly stable, but were introduced '.
+      'relatively recently and may continue to evolve as more applications '.
+      'adopt them.');
   }
 
   final protected function defineParamTypes() {
@@ -94,6 +97,7 @@ abstract class PhabricatorEditEngineAPIMethod
     $boxes[] = id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Transaction Types'))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($summary_info))
       ->appendChild($summary_table);
 
@@ -140,6 +144,7 @@ abstract class PhabricatorEditEngineAPIMethod
       $boxes[] = id(new PHUIObjectBoxView())
       ->setHeaderText(pht('Transaction Type: %s', $type->getEditType()))
       ->setCollapsed(true)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->appendChild($this->buildRemarkup($section))
       ->appendChild($type_table);
     }
@@ -152,6 +157,11 @@ abstract class PhabricatorEditEngineAPIMethod
     $viewer = $this->getViewer();
 
     $view = new PHUIRemarkupView($viewer, $remarkup);
+
+    $view->setRemarkupOptions(
+      array(
+        PHUIRemarkupView::OPTION_PRESERVE_LINEBREAKS => false,
+      ));
 
     return id(new PHUIBoxView())
       ->appendChild($view)

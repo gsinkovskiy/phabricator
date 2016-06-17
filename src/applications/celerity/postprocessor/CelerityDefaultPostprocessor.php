@@ -10,7 +10,7 @@ final class CelerityDefaultPostprocessor
   }
 
   public function getPostprocessorName() {
-    return pht('Use Default Colors');
+    return pht('Use Standard Colors');
   }
 
   public function buildDefaultPostprocessor() {
@@ -71,6 +71,7 @@ final class CelerityDefaultPostprocessor
       'hoverselectedgrey' => '#bbc4ca',
       'hoverselectedblue' => '#e6e9ee',
       'borderinset' => 'inset 0 0 0 1px rgba(55,55,55,.15)',
+      'timeline'    => '#d5d8e1',
 
       // Alphas
       'alphawhite'          => '255,255,255',

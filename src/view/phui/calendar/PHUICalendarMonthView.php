@@ -51,9 +51,7 @@ final class PHUICalendarMonthView extends AphrontView {
   }
 
   public function render() {
-    if (empty($this->user)) {
-      throw new PhutilInvalidStateException('setUser');
-    }
+    $viewer = $this->getViewer();
 
     $events = msort($this->events, 'getEpochStart');
     $days = $this->getDatesInMonth();
@@ -92,8 +90,9 @@ final class PHUICalendarMonthView extends AphrontView {
       $max_daily = 15;
       $counter = 0;
 
-      $list = new PHUICalendarListView();
-      $list->setUser($this->user);
+      $list = id(new PHUICalendarListView())
+        ->setViewer($viewer)
+        ->setView('month');
       foreach ($all_day_events as $item) {
         if ($counter <= $max_daily) {
           $list->addEvent($item);
@@ -495,9 +494,9 @@ final class PHUICalendarMonthView extends AphrontView {
    * @return list List of DateTimes, one for each day.
    */
   private function getDatesInMonth() {
-    $user = $this->user;
+    $viewer = $this->getViewer();
 
-    $timezone = new DateTimeZone($user->getTimezoneIdentifier());
+    $timezone = new DateTimeZone($viewer->getTimezoneIdentifier());
 
     $month = $this->month;
     $year = $this->year;
@@ -575,17 +574,17 @@ final class PHUICalendarMonthView extends AphrontView {
   }
 
   private function getWeekStartAndEnd() {
-    $preferences = $this->user->loadPreferences();
-    $pref_week_start = PhabricatorUserPreferences::PREFERENCE_WEEK_START_DAY;
+    $viewer = $this->getViewer();
+    $week_key = PhabricatorWeekStartDaySetting::SETTINGKEY;
 
-    $week_start = $preferences->getPreference($pref_week_start, 0);
+    $week_start = $viewer->getUserSetting($week_key);
     $week_end = ($week_start + 6) % 7;
 
     return array($week_start, $week_end);
   }
 
   private function getDateTime() {
-    $user = $this->user;
+    $user = $this->getViewer();
     $timezone = new DateTimeZone($user->getTimezoneIdentifier());
 
     $month = $this->month;

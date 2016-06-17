@@ -79,6 +79,7 @@
   margin-left: 1%;
   float: left;
   margin-bottom: 4px;
+  word-wrap: break-word;
 }
 
 .device-desktop .phui-property-list-has-actions .phui-property-list-value {
@@ -125,7 +126,7 @@
 }
 
 .phui-property-list-text-content {
-  padding: 12px 4px;
+  padding: 16px 4px;
   overflow: hidden;
 }
 
@@ -158,6 +159,12 @@
   margin: 16px auto;
   width: 50%;
   min-width: 240px;
+}
+
+.phui-property-list-video {
+  display: block;
+  margin: 0 auto;
+  max-width: 95%;
 }
 
 /* When tags appear in property lists, give them a little more vertical
@@ -199,7 +206,6 @@
 .phui-property-list-image-content img {
   margin: 20px auto;
   background: url('/rsrc/image/checker_light.png');
-  border: 1px solid {$lightblueborder};
 }
 
 .device-desktop .phui-property-list-image-content img:hover {

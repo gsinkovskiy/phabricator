@@ -104,12 +104,12 @@ abstract class PhabricatorController extends AphrontController {
       $request->setUser($user);
     }
 
-    PhabricatorEnv::setLocaleCode($user->getTranslation());
+    id(new PhabricatorAuthSessionEngine())
+      ->willServeRequestForUser($user);
 
-    $preferences = $user->loadPreferences();
     if (PhabricatorEnv::getEnvConfig('darkconsole.enabled')) {
-      $dark_console = PhabricatorUserPreferences::PREFERENCE_DARK_CONSOLE;
-      if ($preferences->getPreference($dark_console) ||
+      $dark_console = PhabricatorDarkConsoleSetting::SETTINGKEY;
+      if ($user->getUserSetting($dark_console) ||
          PhabricatorEnv::getEnvConfig('darkconsole.always-on')) {
         $console = new DarkConsoleCore();
         $request->getApplicationConfiguration()->setConsole($console);
@@ -468,7 +468,32 @@ abstract class PhabricatorController extends AphrontController {
 
   public function newApplicationMenu() {
     return id(new PHUIApplicationMenuView())
-      ->setViewer($this->getRequest()->getUser());
+      ->setViewer($this->getViewer());
+  }
+
+  public function newCurtainView($object) {
+    $viewer = $this->getViewer();
+
+    $action_list = id(new PhabricatorActionListView())
+      ->setViewer($viewer);
+
+    // NOTE: Applications (objects of class PhabricatorApplication) can't
+    // currently be set here, although they don't need any of the extensions
+    // anyway. This should probably work differently than it does, though.
+    if ($object instanceof PhabricatorLiskDAO) {
+      $action_list->setObject($object);
+    }
+
+    $curtain = id(new PHUICurtainView())
+      ->setViewer($viewer)
+      ->setActionList($action_list);
+
+    $panels = PHUICurtainExtension::buildExtensionPanels($viewer, $object);
+    foreach ($panels as $panel) {
+      $curtain->addPanel($panel);
+    }
+
+    return $curtain;
   }
 
   protected function buildTransactionTimeline(

@@ -23,8 +23,7 @@ final class AlmanacDeviceViewController
 
     $title = pht('Device %s', $device->getName());
 
-    $properties = $this->buildPropertyList($device);
-    $actions = $this->buildActionList($device);
+    $curtain = $this->buildCurtain($device);
 
     $header = id(new PHUIHeaderView())
       ->setUser($viewer)
@@ -55,6 +54,7 @@ final class AlmanacDeviceViewController
 
     $view = id(new PHUITwoColumnView())
       ->setHeader($header)
+      ->setCurtain($curtain)
       ->setMainColumn(array(
           $issue,
           $interfaces,
@@ -62,9 +62,7 @@ final class AlmanacDeviceViewController
           $this->buildSSHKeysTable($device),
           $this->buildServicesTable($device),
           $timeline,
-        ))
-      ->setPropertyList($properties)
-      ->setActionList($actions);
+        ));
 
     return $this->newPage()
       ->setTitle($title)
@@ -75,37 +73,28 @@ final class AlmanacDeviceViewController
         ));
   }
 
-  private function buildPropertyList(AlmanacDevice $device) {
+  private function buildCurtain(AlmanacDevice $device) {
     $viewer = $this->getViewer();
-
-    $properties = id(new PHUIPropertyListView())
-      ->setUser($viewer)
-      ->setObject($device);
-
-    return $properties;
-  }
-
-  private function buildActionList(AlmanacDevice $device) {
-    $viewer = $this->getViewer();
-    $id = $device->getID();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
       $device,
       PhabricatorPolicyCapability::CAN_EDIT);
 
-    $actions = id(new PhabricatorActionListView())
-      ->setUser($viewer);
+    $id = $device->getID();
+    $edit_uri = $this->getApplicationURI("device/edit/{$id}/");
 
-    $actions->addAction(
+    $curtain = $this->newCurtainView($device);
+
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setIcon('fa-pencil')
         ->setName(pht('Edit Device'))
-        ->setHref($this->getApplicationURI("device/edit/{$id}/"))
+        ->setHref($edit_uri)
         ->setWorkflow(!$can_edit)
         ->setDisabled(!$can_edit));
 
-    return $actions;
+    return $curtain;
   }
 
   private function buildInterfaceList(AlmanacDevice $device) {
@@ -128,7 +117,7 @@ final class AlmanacDeviceViewController
       ->setCanEdit($can_edit);
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('DEVICE INTERFACES'))
+      ->setHeader(pht('Device Interfaces'))
       ->addActionLink(
         id(new PHUIButtonView())
           ->setTag('a')
@@ -157,6 +146,7 @@ final class AlmanacDeviceViewController
     $keys = id(new PhabricatorAuthSSHKeyQuery())
       ->setViewer($viewer)
       ->withObjectPHIDs(array($device_phid))
+      ->withIsActive(true)
       ->execute();
 
     $table = id(new PhabricatorAuthSSHKeyTableView())
@@ -167,38 +157,13 @@ final class AlmanacDeviceViewController
       ->setShowTrusted(true)
       ->setNoDataString(pht('This device has no associated SSH public keys.'));
 
-    try {
-      PhabricatorSSHKeyGenerator::assertCanGenerateKeypair();
-      $can_generate = true;
-    } catch (Exception $ex) {
-      $can_generate = false;
-    }
-
-    $generate_uri = '/auth/sshkey/generate/?objectPHID='.$device_phid;
-    $upload_uri = '/auth/sshkey/upload/?objectPHID='.$device_phid;
+    $menu_button = PhabricatorAuthSSHKeyTableView::newKeyActionsMenu(
+      $viewer,
+      $device);
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('SSH PUBLIC KEYS'))
-      ->addActionLink(
-        id(new PHUIButtonView())
-          ->setTag('a')
-          ->setHref($generate_uri)
-          ->setWorkflow(true)
-          ->setDisabled(!$can_edit || !$can_generate)
-          ->setText(pht('Generate Keypair'))
-          ->setIcon(
-            id(new PHUIIconView())
-              ->setIcon('fa-lock')))
-      ->addActionLink(
-        id(new PHUIButtonView())
-          ->setTag('a')
-          ->setHref($upload_uri)
-          ->setWorkflow(true)
-          ->setDisabled(!$can_edit)
-          ->setText(pht('Upload Public Key'))
-          ->setIcon(
-            id(new PHUIIconView())
-              ->setIcon('fa-upload')));
+      ->setHeader(pht('SSH Public Keys'))
+      ->addActionLink($menu_button);
 
     return id(new PHUIObjectBoxView())
       ->setHeader($header)
@@ -249,7 +214,7 @@ final class AlmanacDeviceViewController
         ));
 
     return id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('BOUND SERVICES'))
+      ->setHeaderText(pht('Bound Services'))
       ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->setTable($table);
   }

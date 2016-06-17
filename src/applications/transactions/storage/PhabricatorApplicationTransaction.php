@@ -179,6 +179,50 @@ abstract class PhabricatorApplicationTransaction
     return $this->assertAttached($this->object);
   }
 
+  public function getRemarkupChanges() {
+    $changes = $this->newRemarkupChanges();
+    assert_instances_of($changes, 'PhabricatorTransactionRemarkupChange');
+
+    // Convert older-style remarkup blocks into newer-style remarkup changes.
+    // This builds changes that do not have the correct "old value", so rules
+    // that operate differently against edits (like @user mentions) won't work
+    // properly.
+    foreach ($this->getRemarkupBlocks() as $block) {
+      $changes[] = $this->newRemarkupChange()
+        ->setOldValue(null)
+        ->setNewValue($block);
+    }
+
+    $comment = $this->getComment();
+    if ($comment) {
+      if ($comment->hasOldComment()) {
+        $old_value = $comment->getOldComment()->getContent();
+      } else {
+        $old_value = null;
+      }
+
+      $new_value = $comment->getContent();
+
+      $changes[] = $this->newRemarkupChange()
+        ->setOldValue($old_value)
+        ->setNewValue($new_value);
+    }
+
+    return $changes;
+  }
+
+  protected function newRemarkupChanges() {
+    return array();
+  }
+
+  protected function newRemarkupChange() {
+    return id(new PhabricatorTransactionRemarkupChange())
+      ->setTransaction($this);
+  }
+
+  /**
+   * @deprecated
+   */
   public function getRemarkupBlocks() {
     $blocks = array();
 
@@ -193,10 +237,6 @@ abstract class PhabricatorApplicationTransaction
           }
         }
         break;
-    }
-
-    if ($this->getComment()) {
-      $blocks[] = $this->getComment()->getContent();
     }
 
     return $blocks;
@@ -240,6 +280,7 @@ abstract class PhabricatorApplicationTransaction
     $new = $this->getNewValue();
 
     $phids[] = array($this->getAuthorPHID());
+    $phids[] = array($this->getObjectPHID());
     switch ($this->getTransactionType()) {
       case PhabricatorTransactions::TYPE_CUSTOMFIELD:
         $field = $this->getTransactionCustomField();
@@ -255,6 +296,15 @@ abstract class PhabricatorApplicationTransaction
       case PhabricatorTransactions::TYPE_EDGE:
         $phids[] = ipull($old, 'dst');
         $phids[] = ipull($new, 'dst');
+        break;
+      case PhabricatorTransactions::TYPE_COLUMNS:
+        foreach ($new as $move) {
+          $phids[] = array(
+            $move['columnPHID'],
+            $move['boardPHID'],
+          );
+          $phids[] = $move['fromColumnPHIDs'];
+        }
         break;
       case PhabricatorTransactions::TYPE_EDIT_POLICY:
       case PhabricatorTransactions::TYPE_VIEW_POLICY:
@@ -407,6 +457,8 @@ abstract class PhabricatorApplicationTransaction
         return 'fa-trophy';
       case PhabricatorTransactions::TYPE_SPACE:
         return 'fa-th-large';
+      case PhabricatorTransactions::TYPE_COLUMNS:
+        return 'fa-columns';
     }
 
     return 'fa-pencil';
@@ -501,9 +553,10 @@ abstract class PhabricatorApplicationTransaction
             return true;
           }
 
-          if (!strlen($old)) {
+          if (!is_array($old) && !strlen($old)) {
             return true;
           }
+
           break;
       }
     }
@@ -549,6 +602,9 @@ abstract class PhabricatorApplicationTransaction
         if ($field) {
           return $field->shouldHideInApplicationTransactions($this);
         }
+        break;
+      case PhabricatorTransactions::TYPE_COLUMNS:
+        return !$this->getInterestingMoves($this->getNewValue());
       case PhabricatorTransactions::TYPE_EDGE:
         $edge_type = $this->getMetadataValue('edge:type');
         switch ($edge_type) {
@@ -598,7 +654,14 @@ abstract class PhabricatorApplicationTransaction
           case PhabricatorObjectMentionsObjectEdgeType::EDGECONST:
           case PhabricatorObjectMentionedByObjectEdgeType::EDGECONST:
             return true;
-            break;
+          case PhabricatorProjectObjectHasProjectEdgeType::EDGECONST:
+            // When an object is first created, we hide any corresponding
+            // project transactions in the web UI because you can just look at
+            // the UI element elsewhere on screen to see which projects it
+            // is tagged with. However, in mail there's no other way to get
+            // this information, and it has some amount of value to users, so
+            // we keep the transaction. See T10493.
+            return false;
           default:
             break;
         }
@@ -671,6 +734,33 @@ abstract class PhabricatorApplicationTransaction
     return id(clone $this)->setRenderingTarget('text')->getTitle();
   }
 
+  public function getTitleForHTMLMail() {
+    $title = $this->getTitleForMail();
+    if ($title === null) {
+      return null;
+    }
+
+    if ($this->hasChangeDetails()) {
+      $details_uri = $this->getChangeDetailsURI();
+      $details_uri = PhabricatorEnv::getProductionURI($details_uri);
+
+      $show_details = phutil_tag(
+        'a',
+        array(
+          'href' => $details_uri,
+        ),
+        pht('(Show Details)'));
+
+      $title = array($title, ' ', $show_details);
+    }
+
+    return $title;
+  }
+
+  public function getChangeDetailsURI() {
+    return '/transactions/detail/'.$this->getPHID().'/';
+  }
+
   public function getBodyForMail() {
     if ($this->isInlineCommentTransaction()) {
       // We don't return inline comment content as mail body content, because
@@ -712,6 +802,10 @@ abstract class PhabricatorApplicationTransaction
         return pht('This object is already in that space.');
       case PhabricatorTransactions::TYPE_EDGE:
         return pht('Edges already exist; transaction has no effect.');
+      case PhabricatorTransactions::TYPE_COLUMNS:
+        return pht(
+          'You have not moved this object to any columns it is not '.
+          'already in.');
     }
 
     return pht(
@@ -930,6 +1024,44 @@ abstract class PhabricatorApplicationTransaction
         }
         break;
 
+      case PhabricatorTransactions::TYPE_COLUMNS:
+        $moves = $this->getInterestingMoves($new);
+        if (count($moves) == 1) {
+          $move = head($moves);
+          $from_columns = $move['fromColumnPHIDs'];
+          $to_column = $move['columnPHID'];
+          $board_phid = $move['boardPHID'];
+          if (count($from_columns) == 1) {
+            return pht(
+              '%s moved this task from %s to %s on the %s board.',
+              $this->renderHandleLink($author_phid),
+              $this->renderHandleLink(head($from_columns)),
+              $this->renderHandleLink($to_column),
+              $this->renderHandleLink($board_phid));
+          } else {
+            return pht(
+              '%s moved this task to %s on the %s board.',
+              $this->renderHandleLink($author_phid),
+              $this->renderHandleLink($to_column),
+              $this->renderHandleLink($board_phid));
+          }
+        } else {
+          $fragments = array();
+          foreach ($moves as $move) {
+            $fragments[] = pht(
+              '%s (%s)',
+              $this->renderHandleLink($board_phid),
+              $this->renderHandleLink($to_column));
+          }
+
+          return pht(
+            '%s moved this task on %s board(s): %s.',
+            $this->renderHandleLink($author_phid),
+            phutil_count($moves),
+            phutil_implode_html(', ', $fragments));
+        }
+        break;
+
       default:
         return pht(
           '%s edited this %s.',
@@ -1058,6 +1190,47 @@ abstract class PhabricatorApplicationTransaction
             return null;
         }
 
+      case PhabricatorTransactions::TYPE_COLUMNS:
+        $moves = $this->getInterestingMoves($new);
+        if (count($moves) == 1) {
+          $move = head($moves);
+          $from_columns = $move['fromColumnPHIDs'];
+          $to_column = $move['columnPHID'];
+          $board_phid = $move['boardPHID'];
+          if (count($from_columns) == 1) {
+            return pht(
+              '%s moved %s from %s to %s on the %s board.',
+              $this->renderHandleLink($author_phid),
+              $this->renderHandleLink($object_phid),
+              $this->renderHandleLink(head($from_columns)),
+              $this->renderHandleLink($to_column),
+              $this->renderHandleLink($board_phid));
+          } else {
+            return pht(
+              '%s moved %s to %s on the %s board.',
+              $this->renderHandleLink($author_phid),
+              $this->renderHandleLink($object_phid),
+              $this->renderHandleLink($to_column),
+              $this->renderHandleLink($board_phid));
+          }
+        } else {
+          $fragments = array();
+          foreach ($moves as $move) {
+            $fragments[] = pht(
+              '%s (%s)',
+              $this->renderHandleLink($board_phid),
+              $this->renderHandleLink($to_column));
+          }
+
+          return pht(
+            '%s moved %s on %s board(s): %s.',
+            $this->renderHandleLink($author_phid),
+            $this->renderHandleLink($object_phid),
+            phutil_count($moves),
+            phutil_implode_html(', ', $fragments));
+        }
+        break;
+
     }
 
     return $this->getTitle();
@@ -1129,7 +1302,17 @@ abstract class PhabricatorApplicationTransaction
           // Make this weaker than TYPE_COMMENT.
           return 0.25;
         }
-        break;
+
+        if ($this->isApplicationAuthor()) {
+          // When applications (most often: Herald) change subscriptions it
+          // is very uninteresting.
+          return 0.000000001;
+        }
+
+        // In other cases, subscriptions are more interesting than comments
+        // (which are shown anyway) but less interesting than any other type of
+        // transaction.
+        return 0.75;
     }
 
     return 1.0;
@@ -1192,6 +1375,18 @@ abstract class PhabricatorApplicationTransaction
     return false;
   }
 
+  public function hasChangeDetailsForMail() {
+    return $this->hasChangeDetails();
+  }
+
+  public function renderChangeDetailsForMail(PhabricatorUser $viewer) {
+    $view = $this->renderChangeDetails($viewer);
+    if ($view instanceof PhabricatorApplicationTransactionTextDiffDetailView) {
+      return $view->renderForMail();
+    }
+    return null;
+  }
+
   public function renderChangeDetails(PhabricatorUser $viewer) {
     switch ($this->getTransactionType()) {
       case PhabricatorTransactions::TYPE_CUSTOMFIELD:
@@ -1212,15 +1407,10 @@ abstract class PhabricatorApplicationTransaction
     PhabricatorUser $viewer,
     $old,
     $new) {
-
-    require_celerity_resource('differential-changeset-view-css');
-
-    $view = id(new PhabricatorApplicationTransactionTextDiffDetailView())
+    return id(new PhabricatorApplicationTransactionTextDiffDetailView())
       ->setUser($viewer)
       ->setOldText($old)
       ->setNewText($new);
-
-    return $view->render();
   }
 
   public function attachTransactionGroup(array $group) {
@@ -1362,6 +1552,26 @@ abstract class PhabricatorApplicationTransaction
     }
 
     return true;
+  }
+
+  private function isApplicationAuthor() {
+    $author_phid = $this->getAuthorPHID();
+    $author_type = phid_get_type($author_phid);
+    $application_type = PhabricatorApplicationApplicationPHIDType::TYPECONST;
+    return ($author_type == $application_type);
+  }
+
+
+  private function getInterestingMoves(array $moves) {
+    // Remove moves which only shift the position of a task within a column.
+    foreach ($moves as $key => $move) {
+      $from_phids = array_fuse($move['fromColumnPHIDs']);
+      if (isset($from_phids[$move['columnPHID']])) {
+        unset($moves[$key]);
+      }
+    }
+
+    return $moves;
   }
 
 

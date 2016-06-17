@@ -227,6 +227,14 @@ final class AlmanacDevice
     return $this->getName();
   }
 
+  public function getSSHKeyNotifyPHIDs() {
+    // Devices don't currently have anyone useful to notify about SSH key
+    // edits, and they're usually a difficult vector to attack since you need
+    // access to a cluster host. However, it would be nice to make them
+    // subscribable at some point.
+    return array();
+  }
+
 
 /* -(  PhabricatorDestructibleInterface  )----------------------------------- */
 
@@ -246,7 +254,7 @@ final class AlmanacDevice
   }
 
 
-/* -(  PhabricatorNgramInterface  )------------------------------------------ */
+/* -(  PhabricatorNgramsInterface  )----------------------------------------- */
 
 
   public function newNgrams() {

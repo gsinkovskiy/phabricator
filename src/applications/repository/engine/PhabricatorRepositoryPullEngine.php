@@ -24,6 +24,34 @@ final class PhabricatorRepositoryPullEngine
   public function pullRepository() {
     $repository = $this->getRepository();
 
+    $lock = $this->newRepositoryLock($repository, 'repo.pull', true);
+
+    try {
+      $lock->lock();
+    } catch (PhutilLockException $ex) {
+      throw new DiffusionDaemonLockException(
+        pht(
+          'Another process is currently updating repository "%s", '.
+          'skipping pull.',
+          $repository->getDisplayName()));
+    }
+
+    try {
+      $result = $this->pullRepositoryWithLock();
+    } catch (Exception $ex) {
+      $lock->unlock();
+      throw $ex;
+    }
+
+    $lock->unlock();
+
+    return $result;
+  }
+
+  private function pullRepositoryWithLock() {
+    $repository = $this->getRepository();
+    $viewer = PhabricatorUser::getOmnipotentUser();
+
     $is_hg = false;
     $is_git = false;
     $is_svn = false;
@@ -80,18 +108,23 @@ final class PhabricatorRepositoryPullEngine
         } else {
           $this->executeSubversionCreate();
         }
-      } else {
-        if (!$repository->isHosted()) {
-          $this->logPull(
-            pht(
-              'Updating the working copy for repository "%s".',
-              $repository->getDisplayName()));
-          if ($is_git) {
-            $this->verifyGitOrigin($repository);
-            $this->executeGitUpdate();
-          } else if ($is_hg) {
-            $this->executeMercurialUpdate();
-          }
+      }
+
+      id(new DiffusionRepositoryClusterEngine())
+        ->setViewer($viewer)
+        ->setRepository($repository)
+        ->synchronizeWorkingCopyBeforeRead();
+
+      if (!$repository->isHosted()) {
+        $this->logPull(
+          pht(
+            'Updating the working copy for repository "%s".',
+            $repository->getDisplayName()));
+        if ($is_git) {
+          $this->verifyGitOrigin($repository);
+          $this->executeGitUpdate();
+        } else if ($is_hg) {
+          $this->executeMercurialUpdate();
         }
       }
 
@@ -314,7 +347,7 @@ final class PhabricatorRepositoryPullEngine
         // For bare working copies, we need this magic incantation.
         $future = $repository->getRemoteCommandFuture(
           'fetch origin %s --prune',
-          '+refs/heads/*:refs/heads/*');
+          '+refs/*:refs/*');
       } else {
         $future = $repository->getRemoteCommandFuture(
           'fetch --all --prune');

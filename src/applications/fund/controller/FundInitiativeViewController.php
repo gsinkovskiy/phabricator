@@ -46,42 +46,29 @@ final class FundInitiativeViewController
       ->setStatus($status_icon, $status_color, $status_name)
       ->setHeaderIcon('fa-heart');
 
-    $properties = $this->buildPropertyListView($initiative);
-    $actions = $this->buildActionListView($initiative);
+    $curtain = $this->buildCurtain($initiative);
     $details = $this->buildPropertySectionView($initiative);
 
     $timeline = $this->buildTransactionTimeline(
       $initiative,
       new FundInitiativeTransactionQuery());
-    $timeline->setShouldTerminate(true);
+
+    $add_comment = $this->buildCommentForm($initiative);
 
     $view = id(new PHUITwoColumnView())
       ->setHeader($header)
-      ->setMainColumn($timeline)
-      ->setPropertyList($properties)
-      ->addPropertySection(pht('DETAILS'), $details)
-      ->setActionList($actions);
+      ->setCurtain($curtain)
+      ->setMainColumn(array(
+        $timeline,
+        $add_comment,
+      ))
+      ->addPropertySection(pht('Details'), $details);
 
     return $this->newPage()
       ->setTitle($title)
       ->setCrumbs($crumbs)
       ->setPageObjectPHIDs(array($initiative->getPHID()))
-      ->appendChild(
-        array(
-          $view,
-      ));
-  }
-
-  private function buildPropertyListView(FundInitiative $initiative) {
-    $viewer = $this->getRequest()->getUser();
-
-    $view = id(new PHUIPropertyListView())
-      ->setUser($viewer)
-      ->setObject($initiative);
-
-    $view->invokeWillRenderEvent();
-
-    return $view;
+      ->appendChild($view);
   }
 
   private function buildPropertySectionView(FundInitiative $initiative) {
@@ -124,8 +111,9 @@ final class FundInitiativeViewController
     return $view;
   }
 
-  private function buildActionListView(FundInitiative $initiative) {
-    $viewer = $this->getRequest()->getUser();
+  private function buildCurtain(FundInitiative $initiative) {
+    $viewer = $this->getViewer();
+
     $id = $initiative->getID();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
@@ -133,11 +121,9 @@ final class FundInitiativeViewController
       $initiative,
       PhabricatorPolicyCapability::CAN_EDIT);
 
-    $view = id(new PhabricatorActionListView())
-      ->setUser($viewer)
-      ->setObject($initiative);
+    $curtain = $this->newCurtainView($initiative);
 
-    $view->addAction(
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setName(pht('Edit Initiative'))
         ->setIcon('fa-pencil')
@@ -153,7 +139,7 @@ final class FundInitiativeViewController
       $close_icon = 'fa-times';
     }
 
-    $view->addAction(
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setName($close_name)
         ->setIcon($close_icon)
@@ -161,7 +147,7 @@ final class FundInitiativeViewController
         ->setWorkflow(true)
         ->setHref($this->getApplicationURI("/close/{$id}/")));
 
-    $view->addAction(
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setName(pht('Back Initiative'))
         ->setIcon('fa-money')
@@ -169,13 +155,36 @@ final class FundInitiativeViewController
         ->setWorkflow(true)
         ->setHref($this->getApplicationURI("/back/{$id}/")));
 
-    $view->addAction(
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setName(pht('View Backers'))
         ->setIcon('fa-bank')
         ->setHref($this->getApplicationURI("/backers/{$id}/")));
 
-    return $view;
+    return $curtain;
   }
+
+  private function buildCommentForm(FundInitiative $initiative) {
+    $viewer = $this->getViewer();
+
+    $is_serious = PhabricatorEnv::getEnvConfig('phabricator.serious-business');
+
+    $add_comment_header = $is_serious
+      ? pht('Add Comment')
+      : pht('Add Liquidity');
+
+    $draft = PhabricatorDraft::newFromUserAndKey(
+      $viewer, $initiative->getPHID());
+
+    return id(new PhabricatorApplicationTransactionCommentView())
+      ->setUser($viewer)
+      ->setObjectPHID($initiative->getPHID())
+      ->setDraft($draft)
+      ->setHeaderText($add_comment_header)
+      ->setAction(
+        $this->getApplicationURI('/comment/'.$initiative->getID().'/'))
+      ->setSubmitButtonName(pht('Add Comment'));
+  }
+
 
 }

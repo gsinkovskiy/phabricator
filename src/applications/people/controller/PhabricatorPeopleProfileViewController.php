@@ -59,11 +59,11 @@ final class PhabricatorPeopleProfileViewController
 
     $projects = $this->buildProjectsView($user);
     $badges = $this->buildBadgesView($user);
+    $calendar = $this->buildCalendarDayView($user);
     require_celerity_resource('project-view-css');
 
     $home = id(new PHUITwoColumnView())
       ->setHeader($header)
-      ->setFluid(true)
       ->addClass('project-view-home')
       ->setMainColumn(
         array(
@@ -74,6 +74,7 @@ final class PhabricatorPeopleProfileViewController
         array(
           $projects,
           $badges,
+          $calendar,
         ));
 
     $nav = $this->getProfileMenu();
@@ -173,6 +174,73 @@ final class PhabricatorPeopleProfileViewController
     return $box;
   }
 
+  private function buildCalendarDayView(PhabricatorUser $user) {
+    $viewer = $this->getViewer();
+    $class = 'PhabricatorCalendarApplication';
+
+    if (!PhabricatorApplication::isClassInstalledForViewer($class, $viewer)) {
+      return null;
+    }
+
+    $midnight = PhabricatorTime::getTodayMidnightDateTime($viewer);
+    $week_end = clone $midnight;
+    $week_end = $week_end->modify('+3 days');
+
+    $range_start = $midnight->format('U');
+    $range_end = $week_end->format('U');
+
+    $query = id(new PhabricatorCalendarEventQuery())
+      ->setViewer($viewer)
+      ->withDateRange($range_start, $range_end)
+      ->withInvitedPHIDs(array($user->getPHID()))
+      ->withIsCancelled(false);
+
+    $statuses = $query->execute();
+    $phids = mpull($statuses, 'getUserPHID');
+    $events = array();
+
+    foreach ($statuses as $status) {
+      $viewer_is_invited = $status->getIsUserInvited($user->getPHID());
+
+      $can_edit = PhabricatorPolicyFilter::hasCapability(
+        $viewer,
+        $status,
+        PhabricatorPolicyCapability::CAN_EDIT);
+
+      $event = id(new AphrontCalendarEventView())
+        ->setCanEdit($can_edit)
+        ->setEventID($status->getID())
+        ->setEpochRange($status->getDateFrom(), $status->getDateTo())
+        ->setIsAllDay($status->getIsAllDay())
+        ->setIcon($status->getIcon())
+        ->setViewerIsInvited($viewer_is_invited)
+        ->setName($status->getName())
+        ->setURI($status->getURI());
+      $events[] = $event;
+    }
+
+    $events = msort($events, 'getEpochStart');
+    $day_view = id(new PHUICalendarWeekView())
+      ->setViewer($viewer)
+      ->setView('week')
+      ->setEvents($events)
+      ->setWeekLength(3)
+      ->render();
+
+    $header = id(new PHUIHeaderView())
+      ->setHeader(pht('Calendar'))
+      ->setHref(
+        urisprintf(
+          '/calendar/?invitedPHIDs=%s#R',
+          $user->getPHID()));
+    $box = id(new PHUIObjectBoxView())
+      ->setHeader($header)
+      ->appendChild($day_view)
+      ->setBackground(PHUIObjectBoxView::GREY);
+
+    return $box;
+  }
+
   private function buildBadgesView(PhabricatorUser $user) {
 
     $viewer = $this->getViewer();
@@ -182,24 +250,49 @@ final class PhabricatorPeopleProfileViewController
       return null;
     }
 
-    $badge_phids = $user->getBadgePHIDs();
-    if ($badge_phids) {
-      $badges = id(new PhabricatorBadgesQuery())
+    $awards = array();
+    $badges = array();
+    if ($user->getBadgePHIDs()) {
+      $awards = id(new PhabricatorBadgesAwardQuery())
         ->setViewer($viewer)
-        ->withPHIDs($badge_phids)
-        ->withStatuses(array(PhabricatorBadgesBadge::STATUS_ACTIVE))
+        ->withRecipientPHIDs(array($user->getPHID()))
         ->execute();
+      $awards = mpull($awards, null, 'getBadgePHID');
 
-      $flex = new PHUIBadgeBoxView();
-      foreach ($badges as $badge) {
-        $item = id(new PHUIBadgeView())
-          ->setIcon($badge->getIcon())
-          ->setHeader($badge->getName())
-          ->setSubhead($badge->getFlavor())
-          ->setQuality($badge->getQuality());
-        $flex->addItem($item);
+      $badges = array();
+      foreach ($awards as $award) {
+        $badge = $award->getBadge();
+        if ($badge->getStatus() == PhabricatorBadgesBadge::STATUS_ACTIVE) {
+          $badges[$award->getBadgePHID()] = $badge;
+        }
       }
+    }
 
+    if (count($badges)) {
+      $flex = new PHUIBadgeBoxView();
+
+      foreach ($badges as $badge) {
+        if ($badge) {
+          $awarder_info = array();
+
+          $award = idx($awards, $badge->getPHID(), null);
+          $awarder_phid = $award->getAwarderPHID();
+          $awarder_handle = $viewer->renderHandle($awarder_phid);
+
+          $awarder_info = pht(
+            'Awarded by %s',
+            $awarder_handle->render());
+
+          $item = id(new PHUIBadgeView())
+            ->setIcon($badge->getIcon())
+            ->setHeader($badge->getName())
+            ->setSubhead($badge->getFlavor())
+            ->setQuality($badge->getQuality())
+            ->addByLine($awarder_info);
+
+          $flex->addItem($item);
+        }
+      }
     } else {
       $error = id(new PHUIBoxView())
         ->addClass('mlb')
@@ -209,8 +302,40 @@ final class PhabricatorPeopleProfileViewController
         ->appendChild($error);
     }
 
+    // Best option?
+    $badges = id(new PhabricatorBadgesQuery())
+      ->setViewer($viewer)
+      ->withStatuses(array(
+        PhabricatorBadgesBadge::STATUS_ACTIVE,
+      ))
+      ->requireCapabilities(
+        array(
+          PhabricatorPolicyCapability::CAN_VIEW,
+          PhabricatorPolicyCapability::CAN_EDIT,
+        ))
+      ->execute();
+
+    $button = id(new PHUIButtonView())
+      ->setTag('a')
+      ->setIcon('fa-plus')
+      ->setText(pht('Award'))
+      ->setWorkflow(true)
+      ->setHref('/badges/award/'.$user->getID().'/');
+
+    $can_award = false;
+    if (count($badges)) {
+      $can_award = true;
+    }
+
+    $header = id(new PHUIHeaderView())
+      ->setHeader(pht('Badges'));
+
+    if (count($badges)) {
+      $header->addActionLink($button);
+    }
+
     $box = id(new PHUIObjectBoxView())
-      ->setHeaderText(pht('Badges'))
+      ->setHeader($header)
       ->addClass('project-view-badges')
       ->appendChild($flex)
       ->setBackground(PHUIObjectBoxView::GREY);

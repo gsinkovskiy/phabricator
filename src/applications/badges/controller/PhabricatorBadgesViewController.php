@@ -43,15 +43,15 @@ final class PhabricatorBadgesViewController
       ->setStatus($status_icon, $status_color, $status_name)
       ->setHeaderIcon('fa-trophy');
 
-    $properties = $this->buildPropertyListView($badge);
-    $actions = $this->buildActionListView($badge);
+    $curtain = $this->buildCurtain($badge);
     $details = $this->buildDetailsView($badge);
 
     $timeline = $this->buildTransactionTimeline(
       $badge,
       new PhabricatorBadgesTransactionQuery());
 
-    $recipient_phids = $badge->getRecipientPHIDs();
+    $awards = $badge->getAwards();
+    $recipient_phids = mpull($awards, 'getRecipientPHID');
     $recipient_phids = array_reverse($recipient_phids);
     $handles = $this->loadViewerHandles($recipient_phids);
 
@@ -60,40 +60,25 @@ final class PhabricatorBadgesViewController
       ->setHandles($handles)
       ->setUser($viewer);
 
-    $add_comment = $this->buildCommentForm($badge);
+    $comment_view = id(new PhabricatorBadgesEditEngine())
+      ->setViewer($viewer)
+      ->buildEditEngineCommentView($badge);
 
     $view = id(new PHUITwoColumnView())
       ->setHeader($header)
+      ->setCurtain($curtain)
       ->setMainColumn(array(
           $recipient_list,
           $timeline,
-          $add_comment,
+          $comment_view,
         ))
-      ->setPropertyList($properties)
-      ->setActionList($actions)
-      ->addPropertySection(pht('BADGE DETAILS'), $details);
+      ->addPropertySection(pht('Description'), $details);
 
     return $this->newPage()
       ->setTitle($title)
       ->setCrumbs($crumbs)
       ->setPageObjectPHIDs(array($badge->getPHID()))
-      ->appendChild(
-        array(
-          $view,
-      ));
-  }
-
-  private function buildPropertyListView(
-    PhabricatorBadgesBadge $badge) {
-    $viewer = $this->getViewer();
-
-    $view = id(new PHUIPropertyListView())
-      ->setUser($viewer)
-      ->setObject($badge);
-
-    $view->invokeWillRenderEvent();
-
-    return $view;
+      ->appendChild($view);
   }
 
   private function buildDetailsView(
@@ -103,25 +88,8 @@ final class PhabricatorBadgesViewController
     $view = id(new PHUIPropertyListView())
       ->setUser($viewer);
 
-    $quality = idx($badge->getQualityNameMap(), $badge->getQuality());
-
-    $view->addProperty(
-      pht('Quality'),
-      $quality);
-
-    $view->addProperty(
-      pht('Icon'),
-      id(new PhabricatorBadgesIconSet())
-        ->getIconLabel($badge->getIcon()));
-
-    $view->addProperty(
-      pht('Flavor'),
-      $badge->getFlavor());
-
     $description = $badge->getDescription();
     if (strlen($description)) {
-      $view->addSectionHeader(
-        pht('Description'), PHUIPropertyListView::ICON_SUMMARY);
       $view->addTextContent(
         new PHUIRemarkupView($viewer, $description));
     }
@@ -137,73 +105,55 @@ final class PhabricatorBadgesViewController
     return $view;
   }
 
-  private function buildActionListView(PhabricatorBadgesBadge $badge) {
+  private function buildCurtain(PhabricatorBadgesBadge $badge) {
     $viewer = $this->getViewer();
-    $id = $badge->getID();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
       $badge,
       PhabricatorPolicyCapability::CAN_EDIT);
 
-    $view = id(new PhabricatorActionListView())
-      ->setUser($viewer)
-      ->setObject($badge);
+    $id = $badge->getID();
+    $edit_uri = $this->getApplicationURI("/edit/{$id}/");
+    $archive_uri = $this->getApplicationURI("/archive/{$id}/");
+    $award_uri = $this->getApplicationURI("/recipients/{$id}/");
 
-    $view->addAction(
+    $curtain = $this->newCurtainView($badge);
+
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setName(pht('Edit Badge'))
         ->setIcon('fa-pencil')
         ->setDisabled(!$can_edit)
-        ->setHref($this->getApplicationURI("/edit/{$id}/")));
+        ->setHref($edit_uri));
 
     if ($badge->isArchived()) {
-      $view->addAction(
+      $curtain->addAction(
         id(new PhabricatorActionView())
           ->setName(pht('Activate Badge'))
           ->setIcon('fa-check')
           ->setDisabled(!$can_edit)
           ->setWorkflow($can_edit)
-          ->setHref($this->getApplicationURI("/archive/{$id}/")));
+          ->setHref($archive_uri));
     } else {
-      $view->addAction(
+      $curtain->addAction(
         id(new PhabricatorActionView())
           ->setName(pht('Archive Badge'))
           ->setIcon('fa-ban')
           ->setDisabled(!$can_edit)
           ->setWorkflow($can_edit)
-          ->setHref($this->getApplicationURI("/archive/{$id}/")));
+          ->setHref($archive_uri));
     }
 
-    $view->addAction(
+    $curtain->addAction(
       id(new PhabricatorActionView())
         ->setName('Add Recipients')
         ->setIcon('fa-users')
         ->setDisabled(!$can_edit)
         ->setWorkflow(true)
-        ->setHref($this->getApplicationURI("/recipients/{$id}/")));
+        ->setHref($award_uri));
 
-    return $view;
-  }
-
-  private function buildCommentForm(PhabricatorBadgesBadge $badge) {
-    $viewer = $this->getViewer();
-
-    $is_serious = PhabricatorEnv::getEnvConfig('phabricator.serious-business');
-
-    $add_comment_header = $is_serious
-      ? pht('Add Comment')
-      : pht('Render Honors');
-
-    $draft = PhabricatorDraft::newFromUserAndKey($viewer, $badge->getPHID());
-
-    return id(new PhabricatorApplicationTransactionCommentView())
-      ->setUser($viewer)
-      ->setObjectPHID($badge->getPHID())
-      ->setDraft($draft)
-      ->setHeaderText($add_comment_header)
-      ->setAction($this->getApplicationURI('/comment/'.$badge->getID().'/'))
-      ->setSubmitButtonName(pht('Add Comment'));
+    return $curtain;
   }
 
 }

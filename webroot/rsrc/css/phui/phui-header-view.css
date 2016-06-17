@@ -78,6 +78,10 @@ body .phui-header-shell.phui-bleed-header
 .phui-header-header .phui-header-icon {
   margin-right: 8px;
   color: {$lightbluetext};
+
+  /* This allows the header text to be triple-clicked to select it in Firefox,
+     see T10905 for discussion. */
+  display: inline;
 }
 
 .phui-object-box .phui-header-tall .phui-header-header,
@@ -323,4 +327,8 @@ body .phui-header-shell.phui-bleed-header
 
 .phui-profile-header .phui-header-col3 {
   vertical-align: top;
+}
+
+.phui-header-view .phui-tag-shade-indigo a {
+  color: {$sh-indigotext};
 }

@@ -15,14 +15,16 @@ final class PhabricatorConfigWelcomeController
       ->buildApplicationCrumbs()
       ->addTextCrumb(pht('Welcome'));
 
-    $nav->setCrumbs($crumbs);
-    $nav->appendChild($this->buildWelcomeScreen($request));
-
-    return $this->buildApplicationPage(
-      $nav,
-      array(
-        'title' => $title,
+    $view = id(new PHUITwoColumnView())
+      ->setNavigation($nav)
+      ->setMainColumn(array(
+        $this->buildWelcomeScreen($request),
       ));
+
+    return $this->newPage()
+      ->setTitle($title)
+      ->setCrumbs($crumbs)
+      ->appendChild($view);
   }
 
   public function buildWelcomeScreen(AphrontRequest $request) {
@@ -139,8 +141,14 @@ final class PhabricatorConfigWelcomeController
       $content);
 
     $settings_href = PhabricatorEnv::getURI('/settings/');
-    $prefs = $viewer->loadPreferences()->getPreferences();
-    $have_settings = !empty($prefs);
+
+    $preferences = id(new PhabricatorUserPreferencesQuery())
+      ->setViewer($viewer)
+      ->withUsers(array($viewer))
+      ->executeOne();
+
+    $have_settings = ($preferences && $preferences->getPreferences());
+
     if ($have_settings) {
       $content = pht(
         "=== Adjust Account Settings ===\n\n".
