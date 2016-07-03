@@ -65,8 +65,14 @@ final class HarbormasterNotifyJenkinsBuildStepImplementation
     $uri = 'http://'.PhabricatorEnv::getEnvConfig('jenkins.host');
     $uri .= '/subversion/%s/notifyCommit?rev=%s';
 
+    $repository_uuid = PhabricatorEnv::getEnvConfig('jenkins.repository-uuid');
+
+    if (empty($repository_uuid)) {
+      throw new ConduitException('ERR-UNKNOWN-REPOSITORY');
+    }
+
     $uri = vsprintf($uri, array(
-      $this->drequest->getRepository()->getUuid(),
+      $repository_uuid,
       $this->drequest->getCommit(),
     ));
 
