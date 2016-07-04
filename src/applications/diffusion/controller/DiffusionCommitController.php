@@ -129,6 +129,12 @@ final class DiffusionCommitController extends DiffusionController {
           ),
           $message));
 
+      if ($commit->isUnreachable()) {
+        $this->commitErrors[] = pht(
+          'This commit has been deleted in the repository: it is no longer '.
+          'reachable from any branch, tag, or ref.');
+      }
+
       if ($this->getCommitErrors()) {
         $error_panel = id(new PHUIInfoView())
           ->appendChild($this->getCommitErrors())
@@ -387,14 +393,15 @@ final class DiffusionCommitController extends DiffusionController {
 
     $add_comment = $this->renderAddCommentPanel($commit, $audit_requests);
 
-    $prefs = $viewer->loadPreferences();
-    $pref_filetree = PhabricatorUserPreferences::PREFERENCE_DIFF_FILETREE;
-    $pref_collapse = PhabricatorUserPreferences::PREFERENCE_NAV_COLLAPSED;
-    $show_filetree = $prefs->getPreference($pref_filetree);
-    $collapsed = $prefs->getPreference($pref_collapse);
+    $filetree_on = $viewer->compareUserSetting(
+      PhabricatorShowFiletreeSetting::SETTINGKEY,
+      PhabricatorShowFiletreeSetting::VALUE_ENABLE_FILETREE);
+
+    $pref_collapse = PhabricatorFiletreeVisibleSetting::SETTINGKEY;
+    $collapsed = $viewer->getUserSetting($pref_collapse);
 
     $nav = null;
-    if ($show_changesets && $show_filetree) {
+    if ($show_changesets && $filetree_on) {
       $nav = id(new DifferentialChangesetFileTreeSideNavBuilder())
         ->setTitle($commit->getDisplayName())
         ->setBaseURI(new PhutilURI($commit->getURI()))
@@ -517,7 +524,12 @@ final class DiffusionCommitController extends DiffusionController {
     if ($audit_requests) {
       $user_requests = array();
       $other_requests = array();
+
       foreach ($audit_requests as $audit_request) {
+        if (!$audit_request->isInteresting()) {
+          continue;
+        }
+
         if ($audit_request->isUser()) {
           $user_requests[] = $audit_request;
         } else {
@@ -533,7 +545,7 @@ final class DiffusionCommitController extends DiffusionController {
 
       if ($other_requests) {
         $view->addProperty(
-          pht('Project/Package Auditors'),
+          pht('Group Auditors'),
           $this->renderAuditStatusView($other_requests));
       }
     }
@@ -1018,20 +1030,6 @@ final class DiffusionCommitController extends DiffusionController {
       ->setWorkflow(!$can_edit);
     $curtain->addAction($action);
 
-    require_celerity_resource('phabricator-object-selector-css');
-    require_celerity_resource('javelin-behavior-phabricator-object-selector');
-
-    $maniphest = 'PhabricatorManiphestApplication';
-    if (PhabricatorApplication::isClassInstalled($maniphest)) {
-      $action = id(new PhabricatorActionView())
-        ->setName(pht('Edit Maniphest Tasks'))
-        ->setIcon('fa-anchor')
-        ->setHref('/search/attach/'.$commit->getPHID().'/TASK/edge/')
-        ->setWorkflow(true)
-        ->setDisabled(!$can_edit);
-      $curtain->addAction($action);
-    }
-
     $action = id(new PhabricatorActionView())
       ->setName(pht('Download Raw Diff'))
       ->setHref($request->getRequestURI()->alter('diff', true))
@@ -1057,6 +1055,15 @@ final class DiffusionCommitController extends DiffusionController {
         ->setMetadata(array('fix-message' => $fix_message))
         ->setIcon('fa-medkit');
       $curtain->addAction($action);
+    }
+
+    $relationship_list = PhabricatorObjectRelationshipList::newForObject(
+      $viewer,
+      $commit);
+
+    $relationship_submenu = $relationship_list->newActionMenu();
+    if ($relationship_submenu) {
+      $curtain->addAction($relationship_submenu);
     }
 
     return $curtain;

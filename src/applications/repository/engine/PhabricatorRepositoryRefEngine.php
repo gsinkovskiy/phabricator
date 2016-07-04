@@ -24,8 +24,6 @@ final class PhabricatorRepositoryRefEngine
     $vcs = $repository->getVersionControlSystem();
     switch ($vcs) {
       case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
-        $bookmarks = array();
-
         if ($repository->supportsBranches()) {
           $branches = $this->loadSVNBranchPositions($repository);
           $tags = $this->loadSVNTagPositions($repository);
@@ -33,26 +31,34 @@ final class PhabricatorRepositoryRefEngine
           $branches = array();
           $tags = array();
         }
+        $maps = array(
+          PhabricatorRepositoryRefCursor::TYPE_BRANCH => $branches,
+          PhabricatorRepositoryRefCursor::TYPE_TAG => $tags,
+        );
         break;
       case PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL:
         $branches = $this->loadMercurialBranchPositions($repository);
         $bookmarks = $this->loadMercurialBookmarkPositions($repository);
-        $tags = array();
+        $maps = array(
+          PhabricatorRepositoryRefCursor::TYPE_BRANCH => $branches,
+          PhabricatorRepositoryRefCursor::TYPE_BOOKMARK => $bookmarks,
+        );
+
         $branches_may_close = true;
         break;
       case PhabricatorRepositoryType::REPOSITORY_TYPE_GIT:
-        $branches = $this->loadGitBranchPositions($repository);
-        $bookmarks = array();
-        $tags = $this->loadGitTagPositions($repository);
+        $maps = $this->loadGitRefPositions($repository);
         break;
       default:
         throw new Exception(pht('Unknown VCS "%s"!', $vcs));
     }
 
-    $maps = array(
-      PhabricatorRepositoryRefCursor::TYPE_BRANCH => $branches,
-      PhabricatorRepositoryRefCursor::TYPE_TAG => $tags,
-      PhabricatorRepositoryRefCursor::TYPE_BOOKMARK => $bookmarks,
+    // Fill in any missing types with empty lists.
+    $maps = $maps + array(
+      PhabricatorRepositoryRefCursor::TYPE_BRANCH => array(),
+      PhabricatorRepositoryRefCursor::TYPE_TAG => array(),
+      PhabricatorRepositoryRefCursor::TYPE_BOOKMARK => array(),
+      PhabricatorRepositoryRefCursor::TYPE_REF => array(),
     );
 
     $all_cursors = id(new PhabricatorRepositoryRefCursorQuery())
@@ -88,6 +94,13 @@ final class PhabricatorRepositoryRefEngine
           $ref->save();
         }
         foreach ($this->deadRefs as $ref) {
+          // Shove this ref into the old refs table so the discovery engine
+          // can check if any commits have been rendered unreachable.
+          id(new PhabricatorRepositoryOldRef())
+            ->setRepositoryPHID($repository->getPHID())
+            ->setCommitIdentifier($ref->getCommitIdentifier())
+            ->save();
+
           $ref->delete();
         }
       $repository->saveTransaction();
@@ -96,6 +109,7 @@ final class PhabricatorRepositoryRefEngine
       $this->deadRefs = array();
     }
 
+    $branches = $maps[PhabricatorRepositoryRefCursor::TYPE_BRANCH];
     if ($branches && $branches_may_close) {
       $this->updateBranchStates($repository, $branches);
     }
@@ -478,22 +492,12 @@ final class PhabricatorRepositoryRefEngine
   /**
    * @task git
    */
-  private function loadGitBranchPositions(PhabricatorRepository $repository) {
-    return id(new DiffusionLowLevelGitRefQuery())
+  private function loadGitRefPositions(PhabricatorRepository $repository) {
+    $refs = id(new DiffusionLowLevelGitRefQuery())
       ->setRepository($repository)
-      ->withIsOriginBranch(true)
       ->execute();
-  }
 
-
-  /**
-   * @task git
-   */
-  private function loadGitTagPositions(PhabricatorRepository $repository) {
-    return id(new DiffusionLowLevelGitRefQuery())
-      ->setRepository($repository)
-      ->withIsTag(true)
-      ->execute();
+    return mgroup($refs, 'getRefType');
   }
 
 

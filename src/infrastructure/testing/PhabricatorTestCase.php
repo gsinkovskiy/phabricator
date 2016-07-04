@@ -113,8 +113,8 @@ abstract class PhabricatorTestCase extends PhutilTestCase {
     // We can't stub this service right now, and it's not generally useful
     // to publish notifications about test execution.
     $this->env->overrideEnvConfig(
-      'notification.enabled',
-      false);
+      'notification.servers',
+      array());
 
     $this->env->overrideEnvConfig(
       'phabricator.base-uri',
@@ -126,6 +126,8 @@ abstract class PhabricatorTestCase extends PhutilTestCase {
 
     // Tests do their own stubbing/voiding for events.
     $this->env->overrideEnvConfig('phabricator.silent', false);
+
+    $this->env->overrideEnvConfig('cluster.read-only', false);
   }
 
   protected function didRunTests() {
@@ -199,6 +201,14 @@ abstract class PhabricatorTestCase extends PhutilTestCase {
     $editor = new PhabricatorUserEditor();
     $editor->setActor($user);
     $editor->createNewUser($user, $email);
+
+    // When creating a new test user, we prefill their setting cache as empty.
+    // This is a little more efficient than doing a query to load the empty
+    // settings.
+    $user->attachRawCacheData(
+      array(
+        PhabricatorUserPreferencesCacheType::KEY_PREFERENCES => '[]',
+      ));
 
     return $user;
   }

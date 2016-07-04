@@ -267,12 +267,12 @@ final class PholioMockEditController extends PholioController {
       $image_elements);
 
     $drop_control = phutil_tag(
-      'div',
+      'a',
       array(
         'id' => $drop_id,
         'class' => 'pholio-edit-drop',
       ),
-      pht('Drag and drop images here to add them to the mock.'));
+      pht('Click here, or drag and drop images to add them to the mock.'));
 
     $order_control = phutil_tag(
       'input',
@@ -316,7 +316,7 @@ final class PholioMockEditController extends PholioController {
         ->setUser($viewer))
       ->appendControl(
         id(new AphrontFormTokenizerControl())
-          ->setLabel(pht('Projects'))
+          ->setLabel(pht('Tags'))
           ->setName('projects')
           ->setValue($v_projects)
           ->setDatasource(new PhabricatorProjectDatasource()))

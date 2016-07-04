@@ -40,8 +40,8 @@ final class PhabricatorDifferentialConfigOptions
       new DifferentialViewPolicyField(),
       new DifferentialEditPolicyField(),
 
-      new DifferentialDependsOnField(),
-      new DifferentialDependenciesField(),
+      new DifferentialParentRevisionsField(),
+      new DifferentialChildRevisionsField(),
       new DifferentialManiphestTasksField(),
       new DifferentialCommitsField(),
 
@@ -280,28 +280,14 @@ final class PhabricatorDifferentialConfigOptions
             "that many lines. For instance, a value of 100 means 'inline ".
             "patches if they are no longer than 100 lines'. By default, ".
             "patches are not inlined.")),
-      // TODO: Implement 'enum'? Options are 'unified' or 'git'.
       $this->newOption(
         'metamta.differential.patch-format',
-        'string',
+        'enum',
         'unified')
         ->setDescription(
-          pht("Format for inlined or attached patches: 'git' or 'unified'.")),
-      $this->newOption(
-        'metamta.differential.unified-comment-context',
-        'bool',
-        false)
-        ->setBoolOptions(
-          array(
-            pht('Show context'),
-            pht('Do not show context'),
-          ))
-        ->setSummary(pht('Show diff context around inline comments in email.'))
-        ->setDescription(
-          pht(
-            'Normally, inline comments in emails are shown with a file and '.
-            'line but without any diff context. Enabling this option adds '.
-            'diff context and the comment thread.')),
+          pht('Format for inlined or attached patches.'))
+        ->setEnumOptions(
+          array('unified' => 'unified', 'git' => 'git')),
     );
   }
 

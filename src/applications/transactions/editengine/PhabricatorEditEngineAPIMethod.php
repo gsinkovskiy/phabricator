@@ -16,7 +16,10 @@ abstract class PhabricatorEditEngineAPIMethod
   }
 
   public function getMethodStatusDescription() {
-    return pht('ApplicationEditor methods are highly unstable.');
+    return pht(
+      'ApplicationEditor methods are fairly stable, but were introduced '.
+      'relatively recently and may continue to evolve as more applications '.
+      'adopt them.');
   }
 
   final protected function defineParamTypes() {
@@ -154,6 +157,11 @@ abstract class PhabricatorEditEngineAPIMethod
     $viewer = $this->getViewer();
 
     $view = new PHUIRemarkupView($viewer, $remarkup);
+
+    $view->setRemarkupOptions(
+      array(
+        PHUIRemarkupView::OPTION_PRESERVE_LINEBREAKS => false,
+      ));
 
     return id(new PHUIBoxView())
       ->appendChild($view)

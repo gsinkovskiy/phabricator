@@ -11,7 +11,8 @@ final class PhamePost extends PhameDAO
     PhabricatorSubscribableInterface,
     PhabricatorDestructibleInterface,
     PhabricatorTokenReceiverInterface,
-    PhabricatorConduitResultInterface {
+    PhabricatorConduitResultInterface,
+    PhabricatorFulltextInterface {
 
   const MARKUP_FIELD_BODY    = 'markup:body';
   const MARKUP_FIELD_SUMMARY = 'markup:summary';
@@ -54,7 +55,8 @@ final class PhamePost extends PhameDAO
   public function getLiveURI() {
     $blog = $this->getBlog();
     $is_draft = $this->isDraft();
-    if (strlen($blog->getDomain()) && !$is_draft) {
+    $is_archived = $this->isArchived();
+    if (strlen($blog->getDomain()) && !$is_draft && !$is_archived) {
       return $this->getExternalLiveURI();
     } else {
       return $this->getInternalLiveURI();
@@ -85,12 +87,28 @@ final class PhamePost extends PhameDAO
     return "/phame/post/view/{$id}/{$slug}/";
   }
 
+  public function getBestURI($is_live, $is_external) {
+    if ($is_live) {
+      if ($is_external) {
+        return $this->getExternalLiveURI();
+      } else {
+        return $this->getInternalLiveURI();
+      }
+    } else {
+      return $this->getViewURI();
+    }
+  }
+
   public function getEditURI() {
     return '/phame/post/edit/'.$this->getID().'/';
   }
 
   public function isDraft() {
     return ($this->getVisibility() == PhameConstants::VISIBILITY_DRAFT);
+  }
+
+  public function isArchived() {
+    return ($this->getVisibility() == PhameConstants::VISIBILITY_ARCHIVED);
   }
 
   protected function getConfiguration() {
@@ -166,7 +184,7 @@ final class PhamePost extends PhameDAO
 
     switch ($capability) {
       case PhabricatorPolicyCapability::CAN_VIEW:
-        if (!$this->isDraft() && $this->getBlog()) {
+        if (!$this->isDraft() && !$this->isArchived() && $this->getBlog()) {
           return $this->getBlog()->getViewPolicy();
         } else if ($this->getBlog()) {
           return $this->getBlog()->getEditPolicy();
@@ -253,15 +271,15 @@ final class PhamePost extends PhameDAO
     return $timeline;
   }
 
+
 /* -(  PhabricatorDestructibleInterface  )----------------------------------- */
+
 
   public function destroyObjectPermanently(
     PhabricatorDestructionEngine $engine) {
 
     $this->openTransaction();
-
       $this->delete();
-
     $this->saveTransaction();
   }
 
@@ -320,6 +338,8 @@ final class PhamePost extends PhameDAO
   public function getFieldValuesForConduit() {
     if ($this->isDraft()) {
       $date_published = null;
+    } else if ($this->isArchived()) {
+      $date_published = null;
     } else {
       $date_published = (int)$this->getDatePublished();
     }
@@ -344,6 +364,13 @@ final class PhamePost extends PhameDAO
 
   public function getAuthor() {
     return $this->getBloggerPHID();
+  }
+
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+  public function newFulltextEngine() {
+    return new PhamePostFulltextEngine();
   }
 
 }

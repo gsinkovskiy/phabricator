@@ -150,13 +150,14 @@ final class PholioMockViewController extends PholioController {
         ->setWorkflow(true));
     }
 
-    $curtain->addAction(
-      id(new PhabricatorActionView())
-      ->setIcon('fa-anchor')
-      ->setName(pht('Edit Maniphest Tasks'))
-      ->setHref("/search/attach/{$mock->getPHID()}/TASK/edge/")
-      ->setDisabled(!$viewer->isLoggedIn())
-      ->setWorkflow(true));
+    $relationship_list = PhabricatorObjectRelationshipList::newForObject(
+      $viewer,
+      $mock);
+
+    $relationship_submenu = $relationship_list->newActionMenu();
+    if ($relationship_submenu) {
+      $curtain->addAction($relationship_submenu);
+    }
 
     if ($this->getManiphestTaskPHIDs()) {
       $curtain->newPanel()
@@ -173,14 +174,15 @@ final class PholioMockViewController extends PholioController {
   }
 
   private function buildDescriptionView(PholioMock $mock) {
-
     $viewer = $this->getViewer();
+
     $properties = id(new PHUIPropertyListView())
       ->setUser($viewer);
     $description = $mock->getDescription();
 
     if (strlen($description)) {
-      $properties->addImageContent($description);
+      $properties->addTextContent(
+        new PHUIRemarkupView($viewer, $description));
       return id(new PHUIObjectBoxView())
         ->setHeaderText(pht('Mock Description'))
         ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)

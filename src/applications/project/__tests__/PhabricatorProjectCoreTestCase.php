@@ -1011,6 +1011,54 @@ final class PhabricatorProjectCoreTestCase extends PhabricatorTestCase {
       $column->getPHID(),
     );
     $this->assertColumns($expect, $user, $board, $task);
+
+
+    // Move the task within the "Milestone" column. This should not affect
+    // the projects the task is tagged with. See T10912.
+    $task_a = $task;
+
+    $task_b = $this->newTask($user, array($backlog));
+    $this->moveToColumn($user, $board, $task_b, $backlog, $column);
+
+    $a_options = array(
+      'beforePHID' => $task_b->getPHID(),
+    );
+
+    $b_options = array(
+      'beforePHID' => $task_a->getPHID(),
+    );
+
+    $old_projects = $this->getTaskProjects($task);
+
+    // Move the target task to the top.
+    $this->moveToColumn($user, $board, $task_a, $column, $column, $a_options);
+    $new_projects = $this->getTaskProjects($task_a);
+    $this->assertEqual($old_projects, $new_projects);
+
+    // Move the other task.
+    $this->moveToColumn($user, $board, $task_b, $column, $column, $b_options);
+    $new_projects = $this->getTaskProjects($task_a);
+    $this->assertEqual($old_projects, $new_projects);
+
+    // Move the target task again.
+    $this->moveToColumn($user, $board, $task_a, $column, $column, $a_options);
+    $new_projects = $this->getTaskProjects($task_a);
+    $this->assertEqual($old_projects, $new_projects);
+
+
+    // Add the parent project to the task. This should move it out of the
+    // milestone column and into the parent's backlog.
+    $this->addProjectTags($user, $task, array($board->getPHID()));
+    $expect_columns = array(
+      $backlog->getPHID(),
+    );
+    $this->assertColumns($expect_columns, $user, $board, $task);
+
+    $new_projects = $this->getTaskProjects($task);
+    $expect_projects = array(
+      $board->getPHID(),
+    );
+    $this->assertEqual($expect_projects, $new_projects);
   }
 
   public function testColumnExtendedPolicies() {
@@ -1050,6 +1098,18 @@ final class PhabricatorProjectCoreTestCase extends PhabricatorTestCase {
 
     $column = $this->refreshColumn($user, $column);
     $this->assertTrue((bool)$column);
+
+    // This test has been failing randomly in a way that doesn't reproduce
+    // on any host, so add some extra assertions to try to nail it down.
+    $board = $this->refreshProject($board, $user, true);
+    $this->assertTrue((bool)$board);
+    $this->assertTrue($board->isUserMember($user->getPHID()));
+
+    $can_view = PhabricatorPolicyFilter::hasCapability(
+      $user,
+      $column,
+      PhabricatorPolicyCapability::CAN_VIEW);
+    $this->assertTrue($can_view);
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $user,

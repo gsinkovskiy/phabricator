@@ -37,7 +37,10 @@ abstract class PhabricatorSearchEngineAPIMethod
   }
 
   public function getMethodStatusDescription() {
-    return pht('ApplicationSearch methods are highly unstable.');
+    return pht(
+      'ApplicationSearch methods are fairly stable, but were introduced '.
+      'relatively recently and may continue to evolve as more applications '.
+      'adopt them.');
   }
 
   final protected function defineParamTypes() {
@@ -65,7 +68,7 @@ abstract class PhabricatorSearchEngineAPIMethod
       'This is a standard **ApplicationSearch** method which will let you '.
       'list, query, or search for objects. For documentation on these '.
       'endpoints, see **[[ %s | Conduit API: Using Search Endpoints ]]**.',
-      PhabricatorEnv::getDoclink('Conduit API: Using Edit Endpoints'));
+      PhabricatorEnv::getDoclink('Conduit API: Using Search Endpoints'));
   }
 
   final public function getMethodDocumentation() {
@@ -498,6 +501,7 @@ EOTEXT
     }
 
     $table = id(new AphrontTableView($rows))
+      ->setNoDataString(pht('This call does not support any attachments.'))
       ->setHeaders(
         array(
           pht('Key'),
@@ -593,6 +597,11 @@ EOTEXT
     $viewer = $this->getViewer();
 
     $view = new PHUIRemarkupView($viewer, $remarkup);
+
+    $view->setRemarkupOptions(
+      array(
+        PHUIRemarkupView::OPTION_PRESERVE_LINEBREAKS => false,
+      ));
 
     return id(new PHUIBoxView())
       ->appendChild($view)

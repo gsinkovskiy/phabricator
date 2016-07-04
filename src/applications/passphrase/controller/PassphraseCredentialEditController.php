@@ -21,6 +21,7 @@ final class PassphraseCredentialEditController extends PassphraseController {
       }
 
       $type = $this->getCredentialType($credential->getCredentialType());
+      $type_const = $type->getCredentialType();
 
       $is_new = false;
     } else {
@@ -228,6 +229,7 @@ final class PassphraseCredentialEditController extends PassphraseController {
     $form = id(new AphrontFormView())
       ->setUser($viewer)
       ->addHiddenInput('isInitialized', true)
+      ->addHiddenInput('type', $type_const)
       ->appendChild(
         id(new AphrontFormTextControl())
           ->setName('name')
@@ -268,8 +270,7 @@ final class PassphraseCredentialEditController extends PassphraseController {
     }
 
     if ($type->shouldRequireUsername()) {
-      $form
-      ->appendChild(
+      $form->appendChild(
         id(new AphrontFormTextControl())
           ->setName('username')
           ->setLabel(pht('Login/Username'))
@@ -277,13 +278,13 @@ final class PassphraseCredentialEditController extends PassphraseController {
           ->setDisabled($credential_is_locked)
           ->setError($e_username));
     }
-       $form
-       ->appendChild(
-        $secret_control
-          ->setName('secret')
-          ->setLabel($type->getSecretLabel())
-          ->setDisabled($credential_is_locked)
-          ->setValue($v_secret));
+
+    $form->appendChild(
+      $secret_control
+        ->setName('secret')
+        ->setLabel($type->getSecretLabel())
+        ->setDisabled($credential_is_locked)
+        ->setValue($v_secret));
 
     if ($type->shouldShowPasswordField()) {
       $form->appendChild(

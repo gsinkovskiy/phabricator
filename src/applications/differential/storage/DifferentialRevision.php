@@ -16,7 +16,8 @@ final class DifferentialRevision extends DifferentialDAO
     PhabricatorMentionableInterface,
     PhabricatorDestructibleInterface,
     PhabricatorProjectInterface,
-    PhabricatorFulltextInterface {
+    PhabricatorFulltextInterface,
+    PhabricatorConduitResultInterface {
 
   protected $title = '';
   protected $originalTitle;
@@ -36,6 +37,7 @@ final class DifferentialRevision extends DifferentialDAO
   protected $repositoryPHID;
   protected $viewPolicy = PhabricatorPolicies::POLICY_USER;
   protected $editPolicy = PhabricatorPolicies::POLICY_USER;
+  protected $properties = array();
 
   private $relationships = self::ATTACHABLE;
   private $commits = self::ATTACHABLE;
@@ -53,6 +55,8 @@ final class DifferentialRevision extends DifferentialDAO
 
   const RELATION_REVIEWER     = 'revw';
   const RELATION_SUBSCRIBED   = 'subd';
+
+  const PROPERTY_CLOSED_FROM_ACCEPTED = 'wasAcceptedBeforeClose';
 
   public static function initializeNewRevision(PhabricatorUser $actor) {
     $app = id(new PhabricatorApplicationQuery())
@@ -77,6 +81,7 @@ final class DifferentialRevision extends DifferentialDAO
       self::CONFIG_SERIALIZATION => array(
         'attached'      => self::SERIALIZATION_JSON,
         'unsubscribed'  => self::SERIALIZATION_JSON,
+        'properties' => self::SERIALIZATION_JSON,
       ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'title' => 'text255',
@@ -115,9 +120,26 @@ final class DifferentialRevision extends DifferentialDAO
     ) + parent::getConfiguration();
   }
 
+  public function setProperty($key, $value) {
+    $this->properties[$key] = $value;
+    return $this;
+  }
+
+  public function getProperty($key, $default = null) {
+    return idx($this->properties, $key, $default);
+  }
+
+  public function hasRevisionProperty($key) {
+    return array_key_exists($key, $this->properties);
+  }
+
   public function getMonogram() {
     $id = $this->getID();
     return "D{$id}";
+  }
+
+  public function getURI() {
+    return '/'.$this->getMonogram();
   }
 
   public function setTitle($title) {
@@ -410,6 +432,31 @@ final class DifferentialRevision extends DifferentialDAO
     return DifferentialRevisionStatus::isClosedStatus($this->getStatus());
   }
 
+  public function getStatusIcon() {
+    $map = array(
+      ArcanistDifferentialRevisionStatus::NEEDS_REVIEW
+        => 'fa-code grey',
+      ArcanistDifferentialRevisionStatus::NEEDS_REVISION
+        => 'fa-refresh red',
+      ArcanistDifferentialRevisionStatus::CHANGES_PLANNED
+        => 'fa-headphones red',
+      ArcanistDifferentialRevisionStatus::ACCEPTED
+        => 'fa-check green',
+      ArcanistDifferentialRevisionStatus::CLOSED
+        => 'fa-check-square-o black',
+      ArcanistDifferentialRevisionStatus::ABANDONED
+        => 'fa-plane black',
+    );
+
+    return idx($map, $this->getStatus());
+  }
+
+  public function getStatusDisplayName() {
+    $status = $this->getStatus();
+    return ArcanistDifferentialRevisionStatus::getNameForRevisionStatus(
+      $status);
+  }
+
   public function getFlag(PhabricatorUser $viewer) {
     return $this->assertAttachedKey($this->flags, $viewer->getPHID());
   }
@@ -631,26 +678,7 @@ final class DifferentialRevision extends DifferentialDAO
 /* -(  PhabricatorStatusIconInterface  )--------------------------------------- */
 
   public function setStatusIcon(PHUIObjectItemView $item) {
-    switch ($this->getStatus()) {
-      case ArcanistDifferentialRevisionStatus::NEEDS_REVIEW:
-        $item->setStatusIcon('fa-code grey', pht('Needs Review'));
-        break;
-      case ArcanistDifferentialRevisionStatus::NEEDS_REVISION:
-        $item->setStatusIcon('fa-refresh red', pht('Needs Revision'));
-        break;
-      case ArcanistDifferentialRevisionStatus::CHANGES_PLANNED:
-        $item->setStatusIcon('fa-headphones red', pht('Changes Planned'));
-        break;
-      case ArcanistDifferentialRevisionStatus::ACCEPTED:
-        $item->setStatusIcon('fa-check green', pht('Accepted'));
-        break;
-      case ArcanistDifferentialRevisionStatus::CLOSED:
-        $item->setStatusIcon('fa-check-square-o black', pht('Closed'));
-        break;
-      case ArcanistDifferentialRevisionStatus::ABANDONED:
-        $item->setStatusIcon('fa-plane black', pht('Abandoned'));
-        break;
-    }
+    $item->setStatusIcon($this->getStatusIcon(), $this->getStatusDisplayName());
   }
 
 
@@ -667,6 +695,34 @@ final class DifferentialRevision extends DifferentialDAO
 
   public function newFulltextEngine() {
     return new DifferentialRevisionFulltextEngine();
+  }
+
+
+/* -(  PhabricatorConduitResultInterface  )---------------------------------- */
+
+
+  public function getFieldSpecificationsForConduit() {
+    return array(
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('title')
+        ->setType('string')
+        ->setDescription(pht('The revision title.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('authorPHID')
+        ->setType('phid')
+        ->setDescription(pht('Revision author PHID.')),
+    );
+  }
+
+  public function getFieldValuesForConduit() {
+    return array(
+      'title' => $this->getTitle(),
+      'authorPHID' => $this->getAuthorPHID(),
+    );
+  }
+
+  public function getConduitSearchAttachments() {
+    return array();
   }
 
 }

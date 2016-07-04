@@ -161,7 +161,7 @@ final class PhabricatorDashboardEditController
 
     $form->appendControl(
       id(new AphrontFormTokenizerControl())
-        ->setLabel(pht('Projects'))
+        ->setLabel(pht('Tags'))
         ->setName('projects')
         ->setValue($v_projects)
         ->setDatasource(new PhabricatorProjectDatasource()));
@@ -268,10 +268,10 @@ final class PhabricatorDashboardEditController
           $request,
           $viewer,
           'query',
-          pht('Recent Tasks'),
+          pht('Open Tasks'),
           array(
             'class' => 'ManiphestTaskSearchEngine',
-            'key' => 'all',
+            'key' => 'open',
           ));
         $panel_phids[] = $task_panel->getPHID();
 
