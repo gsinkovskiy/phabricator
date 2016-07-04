@@ -20,6 +20,8 @@ final class PhabricatorHarbormasterConfigOptions
       $this->newOption('jenkins.api-token', 'string', null)
         ->setMasked(true)
         ->setDescription(pht('API token for accessing Jenkins.')),
+      $this->newOption('jenkins.repository-uuid', 'string', null)
+          ->setDescription(pht('Repository UUID to notify about new commits.')),
     );
   }
 
