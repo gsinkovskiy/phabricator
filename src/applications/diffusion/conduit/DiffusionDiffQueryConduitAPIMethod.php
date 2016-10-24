@@ -218,8 +218,10 @@ final class DiffusionDiffQueryConduitAPIMethod
 
     $properties = array();
     $proplist = new SimpleXMLElement($stdout);
-    foreach ($proplist->target->property as $property) {
-      $properties[(string)$property['name']] = (string)$property;
+    if (count($proplist->target) > 0) {
+      foreach ($proplist->target->property as $property) {
+        $properties[(string)$property['name']] = (string)$property;
+      }
     }
 
     return $properties;
