@@ -188,7 +188,7 @@ final class PHUIObjectItemView extends AphrontTagView {
   public function setEpoch($epoch, $age = self::AGE_FRESH) {
     $date = phabricator_datetime($epoch, $this->getUser());
 
-    $days = floor((time() - $epoch) / 60 / 60 / 24);
+    $relative = phutil_format_relative_time(time() - $epoch);
 
     switch ($age) {
       case self::AGE_FRESH:
@@ -196,7 +196,7 @@ final class PHUIObjectItemView extends AphrontTagView {
         break;
       case self::AGE_STALE:
         $attr = array(
-          'tip' => pht('Stale (%s day(s))', new PhutilNumber($days)),
+          'tip' => pht('Stale (%s)', $relative),
           'class' => 'icon-age-stale',
         );
 
@@ -204,7 +204,7 @@ final class PHUIObjectItemView extends AphrontTagView {
         break;
       case self::AGE_OLD:
         $attr = array(
-          'tip' =>  pht('Old (%s day(s))', new PhutilNumber($days)),
+          'tip' =>  pht('Old (%s)', $relative),
           'class' => 'icon-age-old',
         );
         $this->addIcon('fa-clock-o red', $date, $attr);
