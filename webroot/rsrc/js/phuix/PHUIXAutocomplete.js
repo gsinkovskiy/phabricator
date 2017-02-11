@@ -118,7 +118,6 @@ JX.install('PHUIXAutocomplete', {
         case '|': // Might be a table cell.
         case '>': // Might be a blockquote.
         case '!': // Might be a blockquote attribution line.
-        case ':': // Might be a "NOTE:".
           // We'll let these autocomplete.
           break;
         default:
@@ -197,7 +196,11 @@ JX.install('PHUIXAutocomplete', {
     _onkeypress: function(e) {
       var r = e.getRawEvent();
 
-      if (r.metaKey || r.altKey || r.ctrlKey) {
+      // NOTE: We allow events to continue with "altKey", because you need
+      // to press Alt to type characters like "@" on a German keyboard layout.
+      // The cost of misfiring autocompleters is very small since we do not
+      // eat the keystroke. See T10252.
+      if (r.metaKey || r.ctrlKey) {
         return;
       }
 

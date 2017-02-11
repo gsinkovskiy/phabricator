@@ -1,10 +1,9 @@
 <?php
 
-final class PhabricatorActionListView extends AphrontView {
+final class PhabricatorActionListView extends AphrontTagView {
 
   private $actions = array();
   private $object;
-  private $id = null;
 
   public function setObject(PhabricatorLiskDAO $object) {
     $this->object = $object;
@@ -16,12 +15,19 @@ final class PhabricatorActionListView extends AphrontView {
     return $this;
   }
 
-  public function setID($id) {
-    $this->id = $id;
-    return $this;
+  protected function getTagName() {
+    return 'ul';
   }
 
-  public function render() {
+  protected function getTagAttributes() {
+    $classes = array();
+    $classes[] = 'phabricator-action-list-view';
+    return array(
+      'class' => implode(' ', $classes),
+    );
+  }
+
+  protected function getTagContent() {
     $viewer = $this->getViewer();
 
     $event = new PhabricatorEvent(
@@ -44,13 +50,20 @@ final class PhabricatorActionListView extends AphrontView {
 
     require_celerity_resource('phabricator-action-list-view-css');
 
-    return phutil_tag(
-      'ul',
-      array(
-        'class' => 'phabricator-action-list-view',
-        'id' => $this->id,
-      ),
-      $actions);
+    $items = array();
+    foreach ($actions as $action) {
+      foreach ($action->getItems() as $item) {
+        $items[] = $item;
+      }
+    }
+
+    return $items;
+  }
+
+  public function getDropdownMenuMetadata() {
+    return array(
+      'items' => (string)hsprintf('%s', $this),
+    );
   }
 
 

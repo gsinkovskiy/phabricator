@@ -11,6 +11,16 @@ final class DifferentialQueryConduitAPIMethod
     return pht('Query Differential revisions which match certain criteria.');
   }
 
+  public function getMethodStatus() {
+    return self::METHOD_STATUS_FROZEN;
+  }
+
+  public function getMethodStatusDescription() {
+    return pht(
+      'This method is frozen and will eventually be deprecated. New code '.
+      'should use "differential.revision.search" instead.');
+  }
+
   protected function defineParamTypes() {
     $hash_types = ArcanistDifferentialRevisionHash::getTypes();
     $hash_const = $this->formatStringConstants($hash_types);
@@ -206,6 +216,7 @@ final class DifferentialQueryConduitAPIMethod
         'statusName'          =>
           ArcanistDifferentialRevisionStatus::getNameForRevisionStatus(
             $revision->getStatus()),
+        'properties' => $revision->getProperties(),
         'branch'              => $diff->getBranch(),
         'summary'             => $revision->getSummary(),
         'testPlan'            => $revision->getTestPlan(),

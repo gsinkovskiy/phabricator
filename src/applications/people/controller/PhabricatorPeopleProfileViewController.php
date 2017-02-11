@@ -23,30 +23,7 @@ final class PhabricatorPeopleProfileViewController
     }
 
     $this->setUser($user);
-
-    $profile = $user->loadUserProfile();
-    $picture = $user->getProfileImageURI();
-
-    $profile_icon = PhabricatorPeopleIconSet::getIconIcon($profile->getIcon());
-    $profile_icon = id(new PHUIIconView())
-      ->setIcon($profile_icon);
-    $profile_title = $profile->getDisplayTitle();
-
-    $header = id(new PHUIHeaderView())
-      ->setHeader($user->getFullName())
-      ->setSubheader(array($profile_icon, $profile_title))
-      ->setImage($picture)
-      ->setProfileHeader(true);
-
-    $can_edit = PhabricatorPolicyFilter::hasCapability(
-      $viewer,
-      $user,
-      PhabricatorPolicyCapability::CAN_EDIT);
-
-    if ($can_edit) {
-      $id = $user->getID();
-      $header->setImageEditURL($this->getApplicationURI("picture/{$id}/"));
-    }
+    $header = $this->buildProfileHeader();
 
     $properties = $this->buildPropertyView($user);
     $name = $user->getUsername();
@@ -58,13 +35,14 @@ final class PhabricatorPeopleProfileViewController
       ->appendChild($feed);
 
     $projects = $this->buildProjectsView($user);
-    $badges = $this->buildBadgesView($user);
     $calendar = $this->buildCalendarDayView($user);
+    $badges = $this->buildBadgesView($user);
     require_celerity_resource('project-view-css');
 
     $home = id(new PHUITwoColumnView())
       ->setHeader($header)
       ->addClass('project-view-home')
+      ->addClass('project-view-people-home')
       ->setMainColumn(
         array(
           $properties,
@@ -73,12 +51,12 @@ final class PhabricatorPeopleProfileViewController
       ->setSideColumn(
         array(
           $projects,
-          $badges,
           $calendar,
+          $badges,
         ));
 
     $nav = $this->getProfileMenu();
-    $nav->selectFilter(PhabricatorPeopleProfilePanelEngine::PANEL_PROFILE);
+    $nav->selectFilter(PhabricatorPeopleProfileMenuEngine::ITEM_PROFILE);
 
     $crumbs = $this->buildApplicationCrumbs();
     $crumbs->setBorder(true);
@@ -110,8 +88,13 @@ final class PhabricatorPeopleProfileViewController
       return null;
     }
 
+    $header = id(new PHUIHeaderView())
+      ->setHeader(pht('User Details'));
+
     $view = id(new PHUIObjectBoxView())
       ->appendChild($view)
+      ->setHeader($header)
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY)
       ->addClass('project-view-properties');
 
     return $view;
@@ -158,18 +141,15 @@ final class PhabricatorPeopleProfileViewController
       }
 
     } else {
-      $error = id(new PHUIBoxView())
-        ->addClass('mlb')
-        ->appendChild(pht('User does not belong to any projects.'));
       $list = id(new PHUIInfoView())
         ->setSeverity(PHUIInfoView::SEVERITY_NODATA)
-        ->appendChild($error);
+        ->appendChild(pht('User does not belong to any projects.'));
     }
 
     $box = id(new PHUIObjectBoxView())
       ->setHeader($header)
       ->appendChild($list)
-      ->setBackground(PHUIObjectBoxView::GREY);
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY);
 
     return $box;
   }
@@ -189,41 +169,46 @@ final class PhabricatorPeopleProfileViewController
     $range_start = $midnight->format('U');
     $range_end = $week_end->format('U');
 
-    $query = id(new PhabricatorCalendarEventQuery())
+    $events = id(new PhabricatorCalendarEventQuery())
       ->setViewer($viewer)
       ->withDateRange($range_start, $range_end)
       ->withInvitedPHIDs(array($user->getPHID()))
-      ->withIsCancelled(false);
+      ->withIsCancelled(false)
+      ->needRSVPs(array($viewer->getPHID()))
+      ->execute();
 
-    $statuses = $query->execute();
-    $phids = mpull($statuses, 'getUserPHID');
-    $events = array();
-
-    foreach ($statuses as $status) {
-      $viewer_is_invited = $status->getIsUserInvited($user->getPHID());
+    $event_views = array();
+    foreach ($events as $event) {
+      $viewer_is_invited = $event->isRSVPInvited($viewer->getPHID());
 
       $can_edit = PhabricatorPolicyFilter::hasCapability(
         $viewer,
-        $status,
+        $event,
         PhabricatorPolicyCapability::CAN_EDIT);
 
-      $event = id(new AphrontCalendarEventView())
+      $epoch_min = $event->getStartDateTimeEpoch();
+      $epoch_max = $event->getEndDateTimeEpoch();
+
+      $event_view = id(new AphrontCalendarEventView())
         ->setCanEdit($can_edit)
-        ->setEventID($status->getID())
-        ->setEpochRange($status->getDateFrom(), $status->getDateTo())
-        ->setIsAllDay($status->getIsAllDay())
-        ->setIcon($status->getIcon())
+        ->setEventID($event->getID())
+        ->setEpochRange($epoch_min, $epoch_max)
+        ->setIsAllDay($event->getIsAllDay())
+        ->setIcon($event->getIcon())
         ->setViewerIsInvited($viewer_is_invited)
-        ->setName($status->getName())
-        ->setURI($status->getURI());
-      $events[] = $event;
+        ->setName($event->getName())
+        ->setDatetimeSummary($event->renderEventDate($viewer, true))
+        ->setURI($event->getURI());
+
+      $event_views[] = $event_view;
     }
 
-    $events = msort($events, 'getEpochStart');
+    $event_views = msort($event_views, 'getEpochStart');
+
     $day_view = id(new PHUICalendarWeekView())
       ->setViewer($viewer)
       ->setView('week')
-      ->setEvents($events)
+      ->setEvents($event_views)
       ->setWeekLength(3)
       ->render();
 
@@ -231,12 +216,14 @@ final class PhabricatorPeopleProfileViewController
       ->setHeader(pht('Calendar'))
       ->setHref(
         urisprintf(
-          '/calendar/?invitedPHIDs=%s#R',
-          $user->getPHID()));
+          '/calendar/?invited=%s#R',
+          $user->getUsername()));
+
     $box = id(new PHUIObjectBoxView())
       ->setHeader($header)
       ->appendChild($day_view)
-      ->setBackground(PHUIObjectBoxView::GREY);
+      ->addClass('calendar-profile-box')
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY);
 
     return $box;
   }
@@ -288,18 +275,16 @@ final class PhabricatorPeopleProfileViewController
             ->setHeader($badge->getName())
             ->setSubhead($badge->getFlavor())
             ->setQuality($badge->getQuality())
+            ->setHref($badge->getViewURI())
             ->addByLine($awarder_info);
 
           $flex->addItem($item);
         }
       }
     } else {
-      $error = id(new PHUIBoxView())
-        ->addClass('mlb')
-        ->appendChild(pht('User does not have any badges.'));
       $flex = id(new PHUIInfoView())
         ->setSeverity(PHUIInfoView::SEVERITY_NODATA)
-        ->appendChild($error);
+        ->appendChild(pht('User does not have any badges.'));
     }
 
     // Best option?
@@ -338,7 +323,7 @@ final class PhabricatorPeopleProfileViewController
       ->setHeader($header)
       ->addClass('project-view-badges')
       ->appendChild($flex)
-      ->setBackground(PHUIObjectBoxView::GREY);
+      ->setBackground(PHUIObjectBoxView::BLUE_PROPERTY);
 
     return $box;
   }

@@ -18,6 +18,14 @@ final class PhabricatorDashboardSearchEngine
 
   protected function buildCustomSearchFields() {
     return array(
+      id(new PhabricatorSearchTextField())
+        ->setLabel(pht('Name Contains'))
+        ->setKey('name')
+        ->setDescription(pht('Search for dashboards by name substring.')),
+      id(new PhabricatorSearchDatasourceField())
+        ->setLabel(pht('Authored By'))
+        ->setKey('authorPHIDs')
+        ->setDatasource(new PhabricatorPeopleUserFunctionDatasource()),
       id(new PhabricatorSearchCheckboxesField())
         ->setKey('statuses')
         ->setLabel(pht('Status'))
@@ -30,19 +38,32 @@ final class PhabricatorDashboardSearchEngine
   }
 
   protected function getBuiltinQueryNames() {
-    return array(
-      'open' => pht('Active Dashboards'),
-      'all' => pht('All Dashboards'),
-    );
+    $names = array();
+
+    if ($this->requireViewer()->isLoggedIn()) {
+      $names['authored'] = pht('Authored');
+    }
+
+    $names['open'] = pht('Active Dashboards');
+    $names['all'] = pht('All Dashboards');
+
+    return $names;
   }
 
   public function buildSavedQueryFromBuiltin($query_key) {
     $query = $this->newSavedQuery();
     $query->setQueryKey($query_key);
+    $viewer = $this->requireViewer();
 
     switch ($query_key) {
       case 'all':
         return $query;
+      case 'authored':
+        return $query->setParameter(
+          'authorPHIDs',
+          array(
+            $viewer->getPHID(),
+          ));
       case 'open':
         return $query->setParameter(
           'statuses',
@@ -61,6 +82,14 @@ final class PhabricatorDashboardSearchEngine
       $query->withStatuses($map['statuses']);
     }
 
+    if ($map['authorPHIDs']) {
+      $query->withAuthorPHIDs($map['authorPHIDs']);
+    }
+
+    if ($map['name'] !== null) {
+      $query->withNameNgrams($map['name']);
+    }
+
     return $query;
   }
 
@@ -71,20 +100,6 @@ final class PhabricatorDashboardSearchEngine
 
     $dashboards = mpull($dashboards, null, 'getPHID');
     $viewer = $this->requireViewer();
-
-    if ($dashboards) {
-      $installs = id(new PhabricatorDashboardInstall())
-        ->loadAllWhere(
-          'objectPHID IN (%Ls) AND dashboardPHID IN (%Ls)',
-          array(
-            PhabricatorHomeApplication::DASHBOARD_DEFAULT,
-            $viewer->getPHID(),
-          ),
-          array_keys($dashboards));
-      $installs = mpull($installs, null, 'getDashboardPHID');
-    } else {
-      $installs = array();
-    }
 
     $proj_phids = array();
     foreach ($dashboards as $dashboard) {
@@ -98,36 +113,17 @@ final class PhabricatorDashboardSearchEngine
       ->withPHIDs($proj_phids)
       ->execute();
 
-    $list = new PHUIObjectItemListView();
-    $list->setUser($viewer);
-    $list->initBehavior('phabricator-tooltips', array());
-    $list->requireResource('aphront-tooltip-css');
+    $list = id(new PHUIObjectItemListView())
+      ->setUser($viewer);
 
     foreach ($dashboards as $dashboard_phid => $dashboard) {
       $id = $dashboard->getID();
 
       $item = id(new PHUIObjectItemView())
-        ->setObjectName(pht('Dashboard %d', $id))
+        ->setUser($viewer)
         ->setHeader($dashboard->getName())
         ->setHref($this->getApplicationURI("view/{$id}/"))
         ->setObject($dashboard);
-
-      if (isset($installs[$dashboard_phid])) {
-        $install = $installs[$dashboard_phid];
-        if ($install->getObjectPHID() == $viewer->getPHID()) {
-          $attrs = array(
-            'tip' => pht(
-              'This dashboard is installed to your personal homepage.'),
-          );
-          $item->addIcon('fa-user', pht('Installed'), $attrs);
-        } else {
-          $attrs = array(
-            'tip' => pht(
-              'This dashboard is the default homepage for all users.'),
-          );
-          $item->addIcon('fa-globe', pht('Installed'), $attrs);
-        }
-      }
 
       $project_handles = array_select_keys(
         $proj_handles,
@@ -144,25 +140,11 @@ final class PhabricatorDashboardSearchEngine
         $item->setDisabled(true);
       }
 
-      $can_edit = PhabricatorPolicyFilter::hasCapability(
-        $viewer,
-        $dashboard,
-        PhabricatorPolicyCapability::CAN_EDIT);
-
-      $href_view = $this->getApplicationURI("manage/{$id}/");
-      $item->addAction(
-        id(new PHUIListItemView())
-          ->setName(pht('Manage'))
-          ->setIcon('fa-th')
-          ->setHref($href_view));
-
-      $href_edit = $this->getApplicationURI("edit/{$id}/");
-      $item->addAction(
-        id(new PHUIListItemView())
-          ->setName(pht('Edit'))
-          ->setIcon('fa-pencil')
-          ->setHref($href_edit)
-          ->setDisabled(!$can_edit));
+      $icon = id(new PHUIIconView())
+        ->setIcon($dashboard->getIcon())
+        ->setBackground('bg-dark');
+      $item->setImageIcon($icon);
+      $item->setEpoch($dashboard->getDateModified());
 
       $list->addItem($item);
     }

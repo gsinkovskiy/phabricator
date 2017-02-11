@@ -61,7 +61,7 @@
 }
 
 .device .phui-property-list-key,
-.phui-property-list-stacked .phui-property-list-properties
+div.phui-property-list-stacked .phui-property-list-properties
   .phui-property-list-key {
     padding-left: 4px;
     text-align: left;
@@ -169,8 +169,9 @@
 
 /* When tags appear in property lists, give them a little more vertical
    spacing. */
-.phui-property-list-view .phui-tag-view {
+.phui-property-list-value .phui-tag-view {
   margin: 2px 0;
+  white-space: pre-wrap;
 }
 
 .phui-property-list-has-actions .phui-property-list-properties-wrap {

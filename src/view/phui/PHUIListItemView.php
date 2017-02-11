@@ -29,8 +29,19 @@ final class PHUIListItemView extends AphrontTagView {
   private $indented;
   private $hideInApplicationMenu;
   private $icons = array();
+  private $openInNewWindow = false;
+  private $tooltip;
 
-  public function setHideInApplicationMenu($hide) {
+  public function setOpenInNewWindow($open_in_new_window) {
+    $this->openInNewWindow = $open_in_new_window;
+    return $this;
+  }
+
+  public function getOpenInNewWindow() {
+    return $this->openInNewWindow;
+  }
+
+    public function setHideInApplicationMenu($hide) {
     $this->hideInApplicationMenu = $hide;
     return $this;
   }
@@ -43,10 +54,7 @@ final class PHUIListItemView extends AphrontTagView {
     Javelin::initBehavior('phui-dropdown-menu');
 
     $this->addSigil('phui-dropdown-menu');
-    $this->setMetadata(
-      array(
-        'items' => $actions,
-      ));
+    $this->setMetadata($actions->getDropdownMenuMetadata());
 
     return $this;
   }
@@ -169,6 +177,11 @@ final class PHUIListItemView extends AphrontTagView {
     return $this->icons;
   }
 
+  public function setTooltip($tooltip) {
+    $this->tooltip = $tooltip;
+    return $this;
+  }
+
   protected function getTagName() {
     return 'li';
   }
@@ -178,7 +191,7 @@ final class PHUIListItemView extends AphrontTagView {
     $classes[] = 'phui-list-item-view';
     $classes[] = 'phui-list-item-'.$this->type;
 
-    if ($this->icon) {
+    if ($this->icon || $this->profileImage) {
       $classes[] = 'phui-list-item-has-icon';
     }
 
@@ -195,7 +208,7 @@ final class PHUIListItemView extends AphrontTagView {
     }
 
     return array(
-      'class' => $classes,
+      'class' => implode(' ', $classes),
     );
   }
 
@@ -223,6 +236,16 @@ final class PHUIListItemView extends AphrontTagView {
           'align' => 'E',
         );
       } else {
+        if ($this->tooltip) {
+          Javelin::initBehavior('phabricator-tooltips');
+          $sigil = 'has-tooltip';
+          $meta = array(
+            'tip' => $this->tooltip,
+            'align' => 'E',
+            'size' => 300,
+          );
+        }
+
         $external = null;
         if ($this->isExternal) {
           $external = " \xE2\x86\x97";
@@ -297,6 +320,7 @@ final class PHUIListItemView extends AphrontTagView {
         'class' => implode(' ', $classes),
         'meta' => $meta,
         'sigil' => $sigil,
+        'target' => $this->getOpenInNewWindow() ? '_blank' : null,
       ),
       array(
         $aural,
