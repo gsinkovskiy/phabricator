@@ -277,7 +277,7 @@ final class PhabricatorAuditListView extends AphrontView {
       } else {
         $auditor_list = phutil_tag('em', array(), pht('None'));
       }
-      $item->addAttribute(pht('Auditors: %s', $auditor_list));
+      $item->addByLine(pht('Auditors: %s', $auditor_list));
 
       if ($status_color) {
         $item->setStatusIcon($status_icon.' '.$status_color, $status_text);
