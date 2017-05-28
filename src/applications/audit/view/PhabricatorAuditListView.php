@@ -180,6 +180,7 @@ final class PhabricatorAuditListView extends AphrontView {
         PhabricatorAuditCommitStatusConstants::getStatusIcon($status);
 
       $item = id(new PHUIObjectItemView())
+        ->setViewer($viewer)
         ->setObjectName($commit_name)
         ->setHeader($commit_desc)
         ->setHref($commit_link)

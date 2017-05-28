@@ -165,7 +165,7 @@ final class PHUIObjectItemView extends AphrontTagView {
   }
 
   public function setEpoch($epoch, $age = self::AGE_FRESH) {
-    $date = phabricator_datetime($epoch, $this->getUser());
+    $date = phabricator_datetime($epoch, $this->getViewer());
 
     $relative = phutil_format_relative_time(time() - $epoch);
 
