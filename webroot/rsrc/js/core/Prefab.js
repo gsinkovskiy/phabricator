@@ -101,7 +101,6 @@ JX.install('Prefab', {
 
       datasource.setSortHandler(
         JX.bind(datasource, JX.Prefab.sortHandler, config));
-      datasource.setFilterHandler(JX.Prefab.filterClosedResults);
       datasource.setTransformer(JX.Prefab.transformDatasourceResults);
 
       var typeahead = new JX.Typeahead(
@@ -198,24 +197,12 @@ JX.install('Prefab', {
           prefix_hits[item.id] = true;
         }
 
-        for (var jj = 0; jj < tokens.length; jj++) {
-          if (item.name.indexOf(tokens[jj]) === 0) {
-            priority_hits[item.id] = true;
-          }
-        }
-
         if (!item.priority) {
           continue;
         }
 
         if (config.username && item.priority == config.username) {
           self_hits[item.id] = true;
-        }
-
-        for (var hh = 0; hh < tokens.length; hh++) {
-          if (item.priority.substr(0, tokens[hh].length) == tokens[hh]) {
-            priority_hits[item.id] = true;
-          }
         }
       }
 
@@ -240,10 +227,6 @@ JX.install('Prefab', {
           } else {
             return 1;
           }
-        }
-
-        if (priority_hits[u.id] != priority_hits[v.id]) {
-          return priority_hits[v.id] ? 1 : -1;
         }
 
         if (prefix_hits[u.id] != prefix_hits[v.id]) {
@@ -271,37 +254,6 @@ JX.install('Prefab', {
       });
     },
 
-
-    /**
-     * Filter callback for tokenizers and typeaheads which filters out closed
-     * or disabled objects unless they are the only options.
-     */
-    filterClosedResults: function(value, list) {
-      // Look for any open result.
-      var has_open = false;
-      var ii;
-      for (ii = 0; ii < list.length; ii++) {
-        if (!list[ii].closed) {
-          has_open = true;
-          break;
-        }
-      }
-
-      if (!has_open) {
-        // Everything is closed, so just use it as-is.
-        return list;
-      }
-
-      // Otherwise, only display the open results.
-      var results = [];
-      for (ii = 0; ii < list.length; ii++) {
-        if (!list[ii].closed) {
-          results.push(list[ii]);
-        }
-      }
-
-      return results;
-    },
 
     /**
      * Transform results from a wire format into a usable format in a standard
@@ -347,7 +299,8 @@ JX.install('Prefab', {
         color: fields[11],
         tokenType: fields[12],
         unique: fields[13] || false,
-        autocomplete: fields[14]
+        autocomplete: fields[14],
+        sort: JX.TypeaheadNormalizer.normalize(fields[0])
       };
     },
 

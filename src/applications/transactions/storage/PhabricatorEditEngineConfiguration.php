@@ -16,6 +16,7 @@ final class PhabricatorEditEngineConfiguration
   protected $isEdit = 0;
   protected $createOrder = 0;
   protected $editOrder = 0;
+  protected $subtype;
 
   private $engine = self::ATTACHABLE;
 
@@ -32,6 +33,7 @@ final class PhabricatorEditEngineConfiguration
     PhabricatorEditEngine $engine) {
 
     return id(new PhabricatorEditEngineConfiguration())
+      ->setSubtype(PhabricatorEditEngine::SUBTYPE_DEFAULT)
       ->setEngineKey($engine->getEngineKey())
       ->attachEngine($engine)
       ->setViewPolicy(PhabricatorPolicies::getMostOpenPolicy());
@@ -84,6 +86,7 @@ final class PhabricatorEditEngineConfiguration
         'isEdit' => 'bool',
         'createOrder' => 'uint32',
         'editOrder' => 'uint32',
+        'subtype' => 'text64',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'key_engine' => array(
@@ -109,6 +112,14 @@ final class PhabricatorEditEngineConfiguration
     return $this;
   }
 
+  public function setBuiltinKey($key) {
+    if (strpos($key, '/') !== false) {
+      throw new Exception(
+        pht('EditEngine BuiltinKey contains an invalid key character "/".'));
+    }
+    return parent::setBuiltinKey($key);
+  }
+
   public function attachEngine(PhabricatorEditEngine $engine) {
     $this->engine = $engine;
     return $this;
@@ -128,6 +139,9 @@ final class PhabricatorEditEngineConfiguration
 
     $values = $this->getProperty('defaults', array());
     foreach ($fields as $key => $field) {
+      if (!$field->getIsDefaultable()) {
+        continue;
+      }
       if ($is_new) {
         if (array_key_exists($key, $values)) {
           $field->readDefaultValueFromConfiguration($values[$key]);
@@ -141,15 +155,21 @@ final class PhabricatorEditEngineConfiguration
       switch (idx($locks, $key)) {
         case self::LOCK_LOCKED:
           $field->setIsHidden(false);
-          $field->setIsLocked(true);
+          if ($field->getIsLockable()) {
+            $field->setIsLocked(true);
+          }
           break;
         case self::LOCK_HIDDEN:
           $field->setIsHidden(true);
-          $field->setIsLocked(false);
+          if ($field->getIsLockable()) {
+            $field->setIsLocked(false);
+          }
           break;
         case self::LOCK_VISIBLE:
           $field->setIsHidden(false);
-          $field->setIsLocked(false);
+          if ($field->getIsLockable()) {
+            $field->setIsLocked(false);
+          }
           break;
         default:
           // If we don't have an explicit value, don't make any adjustments.
@@ -197,6 +217,19 @@ final class PhabricatorEditEngineConfiguration
     $key = $this->getIdentifier();
 
     return "/transactions/editengine/{$engine_key}/view/{$key}/";
+  }
+
+  public function getCreateURI() {
+    $form_key = $this->getIdentifier();
+    $engine = $this->getEngine();
+
+    try {
+      $create_uri = $engine->getEditURI(null, "form/{$form_key}/");
+    } catch (Exception $ex) {
+      $create_uri = null;
+    }
+
+    return $create_uri;
   }
 
   public function getIdentifier() {
@@ -293,11 +326,6 @@ final class PhabricatorEditEngineConfiguration
 
     return false;
   }
-
-  public function describeAutomaticCapability($capability) {
-    return null;
-  }
-
 
 /* -(  PhabricatorApplicationTransactionInterface  )------------------------- */
 

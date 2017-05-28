@@ -9,12 +9,6 @@ final class ConpherenceViewController extends
     return true;
   }
 
-  protected function buildApplicationCrumbs() {
-    $crumbs = $this->buildConpherenceApplicationCrumbs();
-    $crumbs->setBorder(true);
-    return $crumbs;
-  }
-
   public function handleRequest(AphrontRequest $request) {
     $user = $request->getUser();
 
@@ -25,8 +19,7 @@ final class ConpherenceViewController extends
     $query = id(new ConpherenceThreadQuery())
       ->setViewer($user)
       ->withIDs(array($conpherence_id))
-      ->needCropPics(true)
-      ->needParticipantCache(true)
+      ->needProfileImage(true)
       ->needTransactions(true)
       ->setTransactionLimit($this->getMainQueryLimit());
 
@@ -62,15 +55,15 @@ final class ConpherenceViewController extends
     }
     $this->setConpherence($conpherence);
 
-    $transactions = $this->getNeededTransactions(
-      $conpherence,
-      $old_message_id);
-    $latest_transaction = head($transactions);
     $participant = $conpherence->getParticipantIfExists($user->getPHID());
+    $theme = ConpherenceRoomSettings::COLOR_LIGHT;
+
     if ($participant) {
+      $settings = $participant->getSettings();
+      $theme = idx($settings, 'theme', ConpherenceRoomSettings::COLOR_LIGHT);
       if (!$participant->isUpToDate($conpherence)) {
         $write_guard = AphrontWriteGuard::beginScopedUnguardedWrites();
-        $participant->markUpToDate($conpherence, $latest_transaction);
+        $participant->markUpToDate($conpherence);
         $user->clearCacheData(PhabricatorUserMessageCountCacheType::KEY_COUNT);
         unset($write_guard);
       }
@@ -79,7 +72,6 @@ final class ConpherenceViewController extends
     $data = ConpherenceTransactionRenderer::renderTransactions(
       $user,
       $conpherence,
-      $full_display = true,
       $marker_type);
     $messages = ConpherenceTransactionRenderer::renderMessagePaneContent(
       $data['transactions'],
@@ -90,14 +82,12 @@ final class ConpherenceViewController extends
       $form = null;
       $content = array('transactions' => $messages);
     } else {
-      $policy_objects = id(new PhabricatorPolicyQuery())
-        ->setViewer($user)
-        ->setObject($conpherence)
-        ->execute();
-      $header = $this->buildHeaderPaneContent($conpherence, $policy_objects);
+      $header = $this->buildHeaderPaneContent($conpherence);
+      $search = $this->buildSearchForm();
       $form = $this->renderFormContent();
       $content = array(
         'header' => $header,
+        'search' => $search,
         'transactions' => $messages,
         'form' => $form,
       );
@@ -129,10 +119,18 @@ final class ConpherenceViewController extends
       ->setBaseURI($this->getApplicationURI())
       ->setThread($conpherence)
       ->setHeader($header)
+      ->setSearch($search)
       ->setMessages($messages)
       ->setReplyForm($form)
+      ->setTheme($theme)
       ->setLatestTransactionID($data['latest_transaction_id'])
       ->setRole('thread');
+
+    $participating = $conpherence->getParticipantIfExists($user->getPHID());
+
+    if (!$user->isLoggedIn()) {
+      $layout->addClass('conpherence-no-pontificate');
+    }
 
     return $this->newPage()
       ->setTitle($title)
@@ -144,84 +142,62 @@ final class ConpherenceViewController extends
 
     $conpherence = $this->getConpherence();
     $user = $this->getRequest()->getUser();
-    $can_join = PhabricatorPolicyFilter::hasCapability(
-      $user,
-      $conpherence,
-      PhabricatorPolicyCapability::CAN_JOIN);
+
     $participating = $conpherence->getParticipantIfExists($user->getPHID());
-    if (!$can_join && !$participating && $user->isLoggedIn()) {
-      return null;
-    }
     $draft = PhabricatorDraft::newFromUserAndKey(
       $user,
       $conpherence->getPHID());
-    if ($participating) {
-      $action = ConpherenceUpdateActions::MESSAGE;
-      $button_text = pht('Send');
-    } else if ($user->isLoggedIn()) {
-      $action = ConpherenceUpdateActions::JOIN_ROOM;
-      $button_text = pht('Join');
+    $update_uri = $this->getApplicationURI('update/'.$conpherence->getID().'/');
+
+    if ($user->isLoggedIn()) {
+      $this->initBehavior('conpherence-pontificate');
+      if ($participating) {
+        $action = ConpherenceUpdateActions::MESSAGE;
+        $status = new PhabricatorNotificationStatusView();
+      } else {
+        $action = ConpherenceUpdateActions::JOIN_ROOM;
+        $status = pht('Sending a message will also join the room.');
+      }
+
+      $form = id(new AphrontFormView())
+        ->setUser($user)
+        ->setAction($update_uri)
+        ->addSigil('conpherence-pontificate')
+        ->setWorkflow(true)
+        ->addHiddenInput('action', $action)
+        ->appendChild(
+          id(new PhabricatorRemarkupControl())
+          ->setUser($user)
+          ->setName('text')
+          ->setSendOnEnter(true)
+          ->setValue($draft->getDraft()));
+
+      $status_view = phutil_tag(
+        'div',
+        array(
+          'class' => 'conpherence-room-status',
+          'id' => 'conpherence-room-status',
+        ),
+        $status);
+
+      $view = phutil_tag_div(
+        'pontificate-container', array($form, $status_view));
+
+      return $view;
+
     } else {
       // user not logged in so give them a login button.
       $login_href = id(new PhutilURI('/auth/start/'))
         ->setQueryParam('next', '/'.$conpherence->getMonogram());
       return id(new PHUIFormLayoutView())
         ->addClass('login-to-participate')
+        ->appendInstructions(pht('Log in to join this room and participate.'))
         ->appendChild(
           id(new PHUIButtonView())
           ->setTag('a')
           ->setText(pht('Login to Participate'))
           ->setHref((string)$login_href));
     }
-    $update_uri = $this->getApplicationURI('update/'.$conpherence->getID().'/');
-
-    $this->initBehavior('conpherence-pontificate');
-
-    $form =
-      id(new AphrontFormView())
-      ->setUser($user)
-      ->setAction($update_uri)
-      ->addSigil('conpherence-pontificate')
-      ->setWorkflow(true)
-      ->addHiddenInput('action', $action)
-      ->appendChild(
-        id(new PhabricatorRemarkupControl())
-        ->setUser($user)
-        ->setName('text')
-        ->setValue($draft->getDraft()))
-      ->appendChild(
-        id(new AphrontFormSubmitControl())
-        ->setValue($button_text))
-      ->render();
-
-    return $form;
-  }
-
-  private function getNeededTransactions(
-    ConpherenceThread $conpherence,
-    $message_id) {
-
-    if ($message_id) {
-      $newer_transactions = $conpherence->getTransactions();
-      $query = id(new ConpherenceTransactionQuery())
-        ->setViewer($this->getRequest()->getUser())
-        ->withObjectPHIDs(array($conpherence->getPHID()))
-        ->setAfterID($message_id)
-        ->needHandles(true)
-        ->setLimit(self::OLDER_FETCH_LIMIT);
-      $older_transactions = $query->execute();
-      $handles = array();
-      foreach ($older_transactions as $transaction) {
-        $handles += $transaction->getHandles();
-      }
-      $conpherence->attachHandles($conpherence->getHandles() + $handles);
-      $transactions = array_merge($newer_transactions, $older_transactions);
-      $conpherence->attachTransactions($transactions);
-    } else {
-      $transactions = $conpherence->getTransactions();
-    }
-
-    return $transactions;
   }
 
   private function getMainQueryLimit() {

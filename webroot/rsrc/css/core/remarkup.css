@@ -51,6 +51,28 @@
   overflow: auto;
   padding: 12px;
   border-radius: 3px;
+  white-space: pre-wrap;
+}
+
+.phabricator-remarkup kbd {
+  display: inline-block;
+  min-width: 1em;
+  padding: 4px 5px 5px;
+  font-weight: normal;
+  font-size: 0.8rem;
+  text-align: center;
+  text-decoration: none;
+  line-height: 0.6rem;
+  border-radius: 3px;
+  box-shadow: inset 0 -1px 0 rgba({$alphablue},0.08);
+  user-select: none;
+  background: {$lightgreybackground};
+  border: 1px solid {$lightgreyborder};
+}
+
+.phabricator-remarkup .kbd-join {
+  padding: 0 4px;
+  color: {$lightgreytext};
 }
 
 .phabricator-remarkup pre.remarkup-counterexample {
@@ -104,12 +126,13 @@
 }
 
 .phabricator-remarkup .remarkup-list-with-checkmarks input {
-  margin-right: 2px;
+  margin-right: 4px;
   opacity: 1;
 }
 
 .phabricator-remarkup .remarkup-list-with-checkmarks .remarkup-checked-item {
   text-decoration: line-through;
+  color: {$lightgreytext};
 }
 
 .phabricator-remarkup ul.remarkup-list ol.remarkup-list,
@@ -250,6 +273,7 @@ video.phabricator-media {
 
 .phabricator-remarkup .phriction-link-missing {
   color: {$red};
+  text-decoration: underline;
 }
 
 .phabricator-remarkup .phriction-link-lock {
@@ -348,8 +372,77 @@ video.phabricator-media {
 }
 
 .phabricator-remarkup-embed-layout-link {
-  padding-left: 20px;
-  background: url(/rsrc/image/icon/fatcow/page_white_put.png) 0 0 no-repeat;
+  padding: 6px 6px 6px 42px;
+  border-radius: 3px;
+  margin: 0 0 4px;
+  display: inline-block;
+  font-weight: bold;
+  -webkit-font-smoothing: antialiased;
+  border: 1px solid {$lightblueborder};
+  border-radius: 3px;
+  color: #000;
+  min-width: 256px;
+  position: relative;
+  /*height: 22px;*/
+  line-height: 20px;
+}
+
+.phabricator-remarkup-embed-layout-icon {
+  font-size: 28px;
+  position: absolute;
+  top: 10px;
+  left: 10px;
+}
+
+.phabricator-remarkup-embed-layout-info {
+  color: {$lightgreytext};
+  font-size: {$smallerfontsize};
+  font-weight: normal;
+  margin-left: 8px;
+}
+
+.phabricator-remarkup-embed-layout-link:hover {
+  border-color: {$violet};
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.phabricator-remarkup-embed-layout-link:hover
+  .phabricator-remarkup-embed-layout-icon {
+    color: {$violet};
+}
+
+.phabricator-remarkup-embed-layout-info-block {
+  display: block;
+}
+
+.embed-download-form {
+  display: inline-block;
+  padding: 0;
+  margin: 0;
+}
+
+.phabricator-remarkup-embed-layout-link
+  .phabricator-remarkup-embed-layout-download {
+    color: {$lightgreytext};
+    border: none;
+    background: rgba(0, 0, 0, 0);
+    box-shadow: none;
+    outline: 0;
+    padding: 0;
+    margin: 0;
+    text-align: left;
+    text-shadow: none;
+    border-radius: 0;
+    font: inherit;
+    display: inline;
+    min-width: 0;
+    font-weight: normal !important;
+}
+
+.phabricator-remarkup-embed-layout-download:hover {
+  color: {$anchor};
+  text-decoration: underline;
 }
 
 .phabricator-remarkup-embed-float-left {
@@ -414,11 +507,13 @@ body div.phabricator-remarkup > *:last-child {
 }
 
 .remarkup-assist-textarea {
-  border-left-color: {$blueborder};
-  border-right-color: {$blueborder};
-  border-bottom-color: {$blueborder};
+  border-left-color: {$greyborder};
+  border-right-color: {$greyborder};
+  border-bottom-color: {$greyborder};
   border-top-color: {$thinblueborder};
   border-radius: 0;
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
 
   box-shadow: none;
   -webkit-box-shadow: none;
@@ -448,12 +543,15 @@ var.remarkup-assist-textarea {
 }
 
 .remarkup-assist-bar {
-  height: 26px;
+  height: 32px;
   border-width: 1px 1px 0;
   border-style: solid;
-  border-top-color: {$blueborder};
-  border-left-color: {$blueborder};
-  border-right-color: {$blueborder};
+  border-top-color: {$greyborder};
+  border-left-color: {$greyborder};
+  border-right-color: {$greyborder};
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+  padding: 0 4px;
 
   background: {$lightbluebackground};
   overflow: hidden;
@@ -461,16 +559,17 @@ var.remarkup-assist-textarea {
 
 .remarkup-assist-button {
   display: block;
-  padding: 4px 5px;
+  margin-top: 4px;
+  height: 20px;
+  padding: 2px 5px 3px;
+  line-height: 18px;
+  width: 16px;
   float: left;
-}
-
-.remarkup-assist-button:hover {
-  background-color: rgba(100,100,100,.15);
+  border-radius: 3px;
 }
 
 .remarkup-assist-button:hover .phui-icon-view.phui-font-fa {
-  color: {$darkbluetext};
+  color: {$sky};
 }
 
 .remarkup-assist-button:active {
@@ -485,11 +584,11 @@ var.remarkup-assist-textarea {
   display: block;
   float: left;
 
-  margin: 7px 4px;
-  height: 14px;
+  height: 18px;
+  margin: 7px 6px;
 
   width: 0px;
-  border-right: 1px solid #cccccc;
+  border-right: 1px solid {$lightgreyborder};
 }
 
 .remarkup-interpreter-error {
@@ -523,27 +622,6 @@ var.remarkup-assist-textarea {
   opacity: 1.0;
 }
 
-.remarkup-control-fullscreen-mode {
-  position: fixed;
-  top: -1px;
-  bottom: -1px;
-  left: -1px;
-  right: -1px;
-}
-
-.remarkup-control-fullscreen-mode textarea.remarkup-assist-textarea {
-  position: absolute;
-  top: 27px;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  /* NOTE: This doesn't work in Firefox, there's a JS behavior to correct it. */
-  height: auto;
-  border-width: 1px 0 0 0;
-  outline: none;
-  resize: none;
-}
-
 .phabricator-image-macro-hero {
   margin: auto;
   max-width: 95%;
@@ -569,41 +647,11 @@ var.remarkup-assist-textarea {
   padding: 0 4px;
 }
 
-.remarkup-inline-preview {
-  display: block;
-  position: relative;
-  background: #fff;
-  overflow-y: auto;
-  box-sizing: border-box;
-  width: 100%;
-  border: 1px solid {$sky};
-  resize: vertical;
-  padding: 4px 6px;
-}
-
-.remarkup-control-fullscreen-mode .remarkup-inline-preview {
-  resize: none;
-}
-
-.remarkup-inline-preview * {
-  resize: none;
-}
-
-.remarkup-assist-button.preview-active {
-  background: {$sky};
-}
-
-.remarkup-assist-button.preview-active .phui-icon-view {
-  color: #ffffff;
-}
-
-.remarkup-assist-button.preview-active:hover .phui-icon-view {
-  color: {$lightsky};
-}
-
 .device .remarkup-assist-nodevice {
   display: none;
 }
+
+/* - Autocomplete ----------------------------------------------------------- */
 
 .phuix-autocomplete {
   position: absolute;
@@ -658,4 +706,168 @@ var.remarkup-assist-textarea {
 .phuix-autocomplete-list a.jx-result.focused:hover {
   background: {$sh-bluebackground};
   color: #000;
+}
+
+
+/* - Pinned ----------------------------------------------------------------- */
+
+.phui-box.phui-object-box.phui-comment-form-view.remarkup-assist-pinned {
+  position: fixed;
+  background-color: #ffffff;
+  border-top: 1px solid {$lightblueborder};
+  box-shadow: 0 0 4px rgba(0, 0, 0, 0.25);
+
+  width: 100%;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  margin: 0;
+
+  overflow: auto;
+  max-height: 40vh;
+}
+
+.remarkup-assist-pinned-spacer {
+  position: relative;
+}
+
+
+/* - Preview ---------------------------------------------------------------- */
+
+.remarkup-inline-preview {
+  display: block;
+  position: relative;
+  background: #fff;
+  overflow-y: auto;
+  box-sizing: border-box;
+  width: 100%;
+  resize: vertical;
+  padding: 8px;
+  border: 1px solid {$lightblueborder};
+  border-top: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.remarkup-control-fullscreen-mode .remarkup-inline-preview {
+  resize: none;
+}
+
+.remarkup-inline-preview * {
+  resize: none;
+}
+
+.remarkup-assist-button.preview-active {
+  background: {$sky};
+}
+
+.remarkup-assist-button.preview-active .phui-icon-view {
+  color: #fff;
+}
+
+.remarkup-assist-button.preview-active:hover {
+  text-decoration: none;
+}
+
+.remarkup-assist-button.preview-active:hover .phui-icon-view {
+  color: #fff;
+}
+
+.remarkup-preview-active .remarkup-assist,
+.remarkup-preview-active .remarkup-assist-separator {
+  opacity: .2;
+  transition: all 100ms cubic-bezier(0.250, 0.250, 0.750, 0.750);
+  transition-timing-function: cubic-bezier(0.250, 0.250, 0.750, 0.750);
+}
+
+.remarkup-preview-active .remarkup-assist-button {
+  pointer-events: none;
+  cursor: default;
+}
+
+.remarkup-preview-active .remarkup-assist-button.preview-active {
+  pointer-events: inherit;
+  cursor: pointer;
+}
+
+.remarkup-preview-active .remarkup-assist.fa-eye {
+  opacity: 1;
+  transition: all 100ms cubic-bezier(0.250, 0.250, 0.750, 0.750);
+  transition-timing-function: cubic-bezier(0.250, 0.250, 0.750, 0.750);
+}
+
+
+/* - Fullscreen ------------------------------------------------------------- */
+
+.remarkup-fullscreen-mode {
+  overflow: hidden;
+}
+
+.remarkup-control-fullscreen-mode {
+  position: fixed;
+  border: none;
+  top: 32px;
+  bottom: 32px;
+  left: 64px;
+  right: 64px;
+  border-radius: 3px;
+  box-shadow: 0px 4px 32px #555;
+}
+
+.remarkup-control-fullscreen-mode .remarkup-assist-button {
+  padding: 1px 6px 4px;
+  font-size: 15px;
+}
+
+.remarkup-control-fullscreen-mode .remarkup-assist-button .remarkup-assist {
+  height: 16px;
+  width: 16px;
+}
+
+.aphront-form-input .remarkup-control-fullscreen-mode .remarkup-assist-bar {
+  border: none;
+  border-top-left-radius: 3px;
+  border-top-right-radius: 3px;
+  height: 32px;
+  padding: 4px 8px;
+  background: {$bluebackground};
+}
+
+.aphront-form-control .remarkup-control-fullscreen-mode
+  textarea.remarkup-assist-textarea {
+    position: absolute;
+    top: 39px;
+    left: 0;
+    right: 0;
+    height: calc(100% - 36px) !important;
+    padding: 16px;
+    font-size: {$biggerfontsize};
+    line-height: 1.51em;
+    border-width: 1px 0 0 0;
+    outline: none;
+    resize: none;
+    background: #fff !important;
+}
+
+.remarkup-control-fullscreen-mode textarea.remarkup-assist-textarea:focus {
+  border-color: {$thinblueborder};
+  box-shadow: none;
+}
+
+.remarkup-control-fullscreen-mode .remarkup-inline-preview {
+  font-size: {$biggerfontsize};
+  border: none;
+  padding: 16px;
+  border-bottom-left-radius: 3px;
+  border-bottom-right-radius: 3px;
+}
+
+.remarkup-control-fullscreen-mode .remarkup-assist-button .fa-arrows-alt {
+  color: {$sky};
+}
+
+.device-phone .remarkup-control-fullscreen-mode {
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
 }

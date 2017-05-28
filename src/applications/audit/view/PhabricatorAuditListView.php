@@ -2,32 +2,19 @@
 
 final class PhabricatorAuditListView extends AphrontView {
 
-  private $commits;
-  private $handles;
-  private $authorityPHIDs = array();
+  private $commits = array();
+  private $header;
+  private $showDrafts;
   private $noDataString;
-
   private $highlightedAudits;
 
   private $commitAudits = array();
-  private $commitAuditorsHTML = array();
 
   private $transactions = array();
   private $inverseMentionMap = array();
   private $inverseMentionCommits = array();
 
   private $timeEvents = array();
-
-  public function setHandles(array $handles) {
-    assert_instances_of($handles, 'PhabricatorObjectHandle');
-    $this->handles = $handles;
-    return $this;
-  }
-
-  public function setAuthorityPHIDs(array $phids) {
-    $this->authorityPHIDs = $phids;
-    return $this;
-  }
 
   public function setNoDataString($no_data_string) {
     $this->noDataString = $no_data_string;
@@ -36,6 +23,24 @@ final class PhabricatorAuditListView extends AphrontView {
 
   public function getNoDataString() {
     return $this->noDataString;
+  }
+
+  public function setHeader($header) {
+    $this->header = $header;
+    return $this;
+  }
+
+  public function getHeader() {
+    return $this->header;
+  }
+
+  public function setShowDrafts($show_drafts) {
+    $this->showDrafts = $show_drafts;
+    return $this;
+  }
+
+  public function getShowDrafts() {
+    return $this->showDrafts;
   }
 
   /**
@@ -49,29 +54,6 @@ final class PhabricatorAuditListView extends AphrontView {
 
   public function getCommits() {
     return $this->commits;
-  }
-
-  public function getRequiredHandlePHIDs() {
-    $phids = array();
-    $commits = $this->getCommits();
-    foreach ($commits as $commit) {
-      $phids[$commit->getPHID()] = true;
-      $phids[$commit->getAuthorPHID()] = true;
-      $audits = $commit->getAudits();
-      foreach ($audits as $audit) {
-        $phids[$audit->getAuditorPHID()] = true;
-      }
-    }
-
-    return array_keys($phids);
-  }
-
-  private function getHandle($phid) {
-    $handle = idx($this->handles, $phid);
-    if (!$handle) {
-      throw new Exception(pht("No handle for '%s'!", $phid));
-    }
-    return $handle;
   }
 
   private function getCommitDescription($phid) {
@@ -106,14 +88,7 @@ final class PhabricatorAuditListView extends AphrontView {
   }
 
   public function buildList() {
-    $user = $this->getUser();
-    if (!$user) {
-      throw new Exception(
-        pht(
-          'You must %s before %s!',
-          'setUser()',
-          __FUNCTION__.'()'));
-    }
+    $viewer = $this->getViewer();
     $rowc = array();
 
     $this->prepareTransactions();
@@ -125,20 +100,35 @@ final class PhabricatorAuditListView extends AphrontView {
 
     $fresh = PhabricatorEnv::getEnvConfig('differential.days-fresh');
     if ($fresh) {
-      $fresh = PhabricatorCalendarHoliday::getNthBusinessDay(
+      $fresh = CalendarTimeUtil::getNthBusinessDay(
         time(),
         -$fresh);
     }
 
     $stale = PhabricatorEnv::getEnvConfig('differential.days-stale');
     if ($stale) {
-      $stale = PhabricatorCalendarHoliday::getNthBusinessDay(
+      $stale = CalendarTimeUtil::getNthBusinessDay(
         time(),
         -$stale);
     }
 
-    $this->initBehavior('phabricator-tooltips', array());
-    $this->requireResource('aphront-tooltip-css');
+    $phids = array();
+    foreach ($this->getCommits() as $commit) {
+      $phids[] = $commit->getPHID();
+
+      foreach ($commit->getAudits() as $audit) {
+        $phids[] = $audit->getAuditorPHID();
+      }
+
+      $author_phid = $commit->getAuthorPHID();
+      if ($author_phid) {
+        $phids[] = $author_phid;
+      }
+    }
+
+    $handles = $viewer->loadHandles($phids);
+
+    $show_drafts = $this->getShowDrafts();
 
     $draft_icon = id(new PHUIIconView())
       ->setIcon('fa-comment yellow')
@@ -168,7 +158,7 @@ final class PhabricatorAuditListView extends AphrontView {
     $list = new PHUIObjectItemListView();
     foreach ($this->commits as $commit) {
       $commit_phid = $commit->getPHID();
-      $commit_handle = $this->getHandle($commit_phid);
+      $commit_handle = $handles[$commit_phid];
 
       $commit_name = $commit_handle->getName();
       $commit_link = $commit_handle->getURI();
@@ -180,30 +170,20 @@ final class PhabricatorAuditListView extends AphrontView {
           $commit->parseCommitMessage($commit_desc);
       }
 
-      $audit = idx($this->commitAudits, $commit_phid);
-      if ($audit) {
-        $reasons = $audit->getAuditReasons();
-        $reasons = phutil_implode_html(', ', $reasons);
-        $status_code = $audit->getAuditStatus();
-        $status_text =
-          PhabricatorAuditStatusConstants::getStatusName($status_code);
-        $status_color =
-          PhabricatorAuditStatusConstants::getStatusColor($status_code);
-        $status_icon =
-          PhabricatorAuditStatusConstants::getStatusIcon($status_code);
-      } else {
-        $reasons = null;
-        $status_code = null;
-        $status_text = null;
-        $status_color = null;
-        $status_icon = null;
-      }
+      $status = $commit->getAuditStatus();
+
+      $status_text =
+        PhabricatorAuditCommitStatusConstants::getStatusName($status);
+      $status_color =
+        PhabricatorAuditCommitStatusConstants::getStatusColor($status);
+      $status_icon =
+        PhabricatorAuditCommitStatusConstants::getStatusIcon($status);
 
       $item = id(new PHUIObjectItemView())
-        ->setUser($user)
         ->setObjectName($commit_name)
         ->setHeader($commit_desc)
-        ->setHref($commit_link);
+        ->setHref($commit_link)
+        ->setDisabled($commit->isUnreachable());
 
       // Add icon indicating, that this commit is a fix commit.
       if ($commit_prefix) {
@@ -228,7 +208,7 @@ final class PhabricatorAuditListView extends AphrontView {
         $item->addAttribute($actual_fixed_by_icon);
       }
 
-      $flag = $commit->getFlag($user);
+      $flag = $commit->getFlag($viewer);
       if ($flag) {
         $flag_class = PhabricatorFlagColor::getCSSClass($flag->getColor());
         $flag_icon = javelin_tag(
@@ -245,8 +225,10 @@ final class PhabricatorAuditListView extends AphrontView {
         $item->addHeadIcon($flag_icon);
       }
 
-      if ($commit->getDrafts($user)) {
-        $item->addAttribute($draft_icon);
+      if ($show_drafts) {
+        if ($commit->getHasDraft($viewer)) {
+          $item->addAttribute($draft_icon);
+        }
       }
 
       if (idx($modification_dates, $commit_phid)) {
@@ -268,13 +250,12 @@ final class PhabricatorAuditListView extends AphrontView {
       // Author
       $author_phid = $commit->getAuthorPHID();
       if ($author_phid !== null) {
-        $author_name = $this->getHandle($author_phid)->renderLink();
+        $author_name = $handles[$author_phid]->renderLink();
       } else {
         $author_name = $commit->getCommitData()->getAuthorName();
       }
 
       $item->addAttribute(pht('Author: %s', $author_name));
-      $item->addAttribute($reasons);
 
       $time_spent = $this->getTimeSpent($commit_phid);
 
@@ -286,14 +267,19 @@ final class PhabricatorAuditListView extends AphrontView {
         ));
       }
 
-      $auditors = idx($this->commitAuditorsHTML, $commit_phid, array());
-      if (!empty($auditors)) {
-        $item->addByLine(pht('Auditors: %s', $auditors));
+      $audits = $commit->getAudits();
+      $auditor_phids = mpull($audits, 'getAuditorPHID');
+      if ($auditor_phids) {
+        $auditor_list = $handles->newSublist($auditor_phids)
+          ->renderList()
+          ->setAsInline(true);
+      } else {
+        $auditor_list = phutil_tag('em', array(), pht('None'));
       }
+      $item->addAttribute(pht('Auditors: %s', $auditor_list));
 
       if ($status_color) {
-        $item->setStatusIcon(
-          $status_icon.' '.$status_color, $status_text);
+        $item->setStatusIcon($status_icon.' '.$status_color, $status_text);
       }
 
       $list->addItem($item);
@@ -303,33 +289,21 @@ final class PhabricatorAuditListView extends AphrontView {
       $list->setNoDataString($this->noDataString);
     }
 
+    if ($this->header) {
+      $list->setHeader($this->header);
+    }
+
     return $list;
   }
 
   private function prepareAuditorInformation() {
     foreach ($this->commits as $commit) {
-      $auditors = array();
       $audits = mpull($commit->getAudits(), null, 'getAuditorPHID');
 
-      foreach ($audits as $audit) {
-        $auditor_phid = $audit->getAuditorPHID();
-        $auditors[$auditor_phid] =
-          $this->getHandle($auditor_phid)->renderLink();
-      }
-
       $commit_phid = $commit->getPHID();
-      $this->commitAuditorsHTML[$commit_phid] =
-        phutil_implode_html(', ', $auditors);
-
-      $authority_audits = array_select_keys($audits, $this->authorityPHIDs);
-      if ($authority_audits) {
-        $this->commitAudits[$commit_phid] = reset($authority_audits);
-      } else {
-        $this->commitAudits[$commit_phid] = reset($audits);
-      }
+      $this->commitAudits[$commit_phid] = reset($audits);
     }
 
-    $this->commitAuditorsHTML = array_filter($this->commitAuditorsHTML);
     $this->commitAudits = array_filter($this->commitAudits);
   }
 
@@ -447,7 +421,7 @@ final class PhabricatorAuditListView extends AphrontView {
     }
 
     $commits = id(new DiffusionCommitQuery())
-      ->setViewer($this->getUser())
+      ->setViewer($this->getViewer())
       ->withPHIDs($phids)
       ->execute();
 
@@ -462,7 +436,7 @@ final class PhabricatorAuditListView extends AphrontView {
     }
 
     $this->transactions = id(new PhabricatorAuditTransactionQuery())
-      ->setViewer($this->getUser())
+      ->setViewer($this->getViewer())
       ->withObjectPHIDs($commit_phids)
       ->needHandles(false)
       ->withTransactionTypes(array(
@@ -486,7 +460,7 @@ final class PhabricatorAuditListView extends AphrontView {
     }
 
     $events = id(new PhrequentUserTimeQuery())
-      ->setViewer($this->getUser())
+      ->setViewer($this->getViewer())
       ->withObjectPHIDs($concern_raised_commits)
       ->needPreemptingEvents(true)
       ->execute();
@@ -515,9 +489,9 @@ final class PhabricatorAuditListView extends AphrontView {
     }
 
     $commits = id(new DiffusionCommitQuery())
-      ->setViewer($this->getUser())
+      ->setViewer($this->getViewer())
       ->withPHIDs(array_keys($this->commits))
-      ->withAuditStatus(DiffusionCommitQuery::AUDIT_STATUS_CONCERN)
+      ->withStatuses(array(PhabricatorAuditCommitStatusConstants::CONCERN_RAISED))
       ->execute();
 
     return mpull($commits, 'getPHID');

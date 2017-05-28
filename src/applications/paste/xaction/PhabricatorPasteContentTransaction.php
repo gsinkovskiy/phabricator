@@ -79,7 +79,6 @@ final class PhabricatorPasteContentTransaction
         'mime-type' => 'text/plain; charset=utf-8',
         'authorPHID' => $actor->getPHID(),
         'viewPolicy' => PhabricatorPolicies::POLICY_NOONE,
-        'editPolicy' => PhabricatorPolicies::POLICY_NOONE,
       ));
   }
 
@@ -102,6 +101,10 @@ final class PhabricatorPasteContentTransaction
 
   public function hasChangeDetailView() {
     return true;
+  }
+
+  public function getMailDiffSectionHeader() {
+    return pht('CHANGES TO PASTE CONTENT');
   }
 
   public function newChangeDetailView() {

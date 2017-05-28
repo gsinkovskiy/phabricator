@@ -8,21 +8,35 @@ final class PhabricatorConfigClusterNotificationsController
     $nav->selectFilter('cluster/notifications/');
 
     $title = pht('Cluster Notifications');
+    $doc_href = PhabricatorEnv::getDoclink('Cluster: Notifications');
+
+    $header = id(new PHUIHeaderView())
+      ->setHeader($title)
+      ->setProfileHeader(true)
+      ->addActionLink(
+        id(new PHUIButtonView())
+          ->setIcon('fa-book')
+          ->setHref($doc_href)
+          ->setTag('a')
+          ->setText(pht('Documentation')));
 
     $crumbs = $this
-      ->buildApplicationCrumbs($nav)
-      ->addTextCrumb(pht('Cluster Notifications'));
+      ->buildApplicationCrumbs()
+      ->addTextCrumb($title)
+      ->setBorder(true);
 
     $notification_status = $this->buildClusterNotificationStatus();
 
-    $view = id(new PHUITwoColumnView())
-      ->setNavigation($nav)
-      ->setMainColumn($notification_status);
+    $content = id(new PhabricatorConfigPageView())
+      ->setHeader($header)
+      ->setContent($notification_status);
 
     return $this->newPage()
       ->setTitle($title)
       ->setCrumbs($crumbs)
-      ->appendChild($view);
+      ->setNavigation($nav)
+      ->appendChild($content)
+      ->addClass('white-background');
   }
 
   private function buildClusterNotificationStatus() {
@@ -89,10 +103,20 @@ final class PhabricatorConfigClusterNotificationsController
           new PhutilNumber(idx($details, 'messages.in')),
           new PhutilNumber(idx($details, 'messages.out')));
 
+        if (idx($details, 'history.size')) {
+          $history = pht(
+            '%s Held / %sms',
+            new PhutilNumber(idx($details, 'history.size')),
+            new PhutilNumber(idx($details, 'history.age')));
+        } else {
+          $history = pht('No Messages');
+        }
+
       } else {
         $uptime = null;
         $clients = null;
         $stats = null;
+        $history = null;
       }
 
       $status_view = array(
@@ -112,6 +136,7 @@ final class PhabricatorConfigClusterNotificationsController
         $uptime,
         $clients,
         $stats,
+        $history,
         $messages,
       );
     }
@@ -129,6 +154,7 @@ final class PhabricatorConfigClusterNotificationsController
           pht('Uptime'),
           pht('Clients'),
           pht('Messages'),
+          pht('History'),
           null,
         ))
       ->setColumnClasses(
@@ -141,23 +167,11 @@ final class PhabricatorConfigClusterNotificationsController
           null,
           null,
           null,
+          null,
           'wide',
         ));
 
-    $doc_href = PhabricatorEnv::getDoclink('Cluster: Notifications');
-
-    $header = id(new PHUIHeaderView())
-      ->setHeader(pht('Cluster Notification Status'))
-      ->addActionLink(
-        id(new PHUIButtonView())
-          ->setIcon('fa-book')
-          ->setHref($doc_href)
-          ->setTag('a')
-          ->setText(pht('Documentation')));
-
-    return id(new PHUIObjectBoxView())
-      ->setHeader($header)
-      ->setTable($table);
+    return $table;
   }
 
 }

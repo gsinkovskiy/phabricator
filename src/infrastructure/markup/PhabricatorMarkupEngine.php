@@ -42,7 +42,7 @@ final class PhabricatorMarkupEngine extends Phobject {
   private $objects = array();
   private $viewer;
   private $contextObject;
-  private $version = 16;
+  private $version = 17;
   private $engineCaches = array();
   private $auxiliaryConfig = array();
 
@@ -111,7 +111,7 @@ final class PhabricatorMarkupEngine extends Phobject {
     }
 
     if (!$keys) {
-      return;
+      return $this;
     }
 
     $objects = array_select_keys($this->objects, $keys);
@@ -414,6 +414,10 @@ final class PhabricatorMarkupEngine extends Phobject {
       case 'default':
         $engine = self::newMarkupEngine(array());
         break;
+      case 'feed':
+        $engine = self::newMarkupEngine(array());
+        $engine->setConfig('autoplay.disable', true);
+        break;
       case 'nolinebreaks':
         $engine = self::newMarkupEngine(array());
         $engine->setConfig('preserve-linebreaks', false);
@@ -505,6 +509,7 @@ final class PhabricatorMarkupEngine extends Phobject {
 
     $rules[] = new PhutilRemarkupDocumentLinkRule();
     $rules[] = new PhabricatorNavigationRemarkupRule();
+    $rules[] = new PhabricatorKeyboardRemarkupRule();
 
     if ($options['youtube']) {
       $rules[] = new PhabricatorYoutubeRemarkupRule();
@@ -606,6 +611,28 @@ final class PhabricatorMarkupEngine extends Phobject {
     return array_values($files);
   }
 
+  public static function summarizeSentence($corpus) {
+    $corpus = trim($corpus);
+    $blocks = preg_split('/\n+/', $corpus, 2);
+    $block = head($blocks);
+
+    $sentences = preg_split(
+      '/\b([.?!]+)\B/u',
+      $block,
+      2,
+      PREG_SPLIT_DELIM_CAPTURE);
+
+    if (count($sentences) > 1) {
+      $result = $sentences[0].$sentences[1];
+    } else {
+      $result = head($sentences);
+    }
+
+    return id(new PhutilUTF8StringTruncator())
+      ->setMaximumGlyphs(128)
+      ->truncateString($result);
+  }
+
   /**
    * Produce a corpus summary, in a way that shortens the underlying text
    * without truncating it somewhere awkward.
@@ -665,6 +692,21 @@ final class PhabricatorMarkupEngine extends Phobject {
     return id(new PhutilClassMapQuery())
       ->setAncestorClass('PhabricatorRemarkupCustomBlockRule')
       ->execute();
+  }
+
+  public static function digestRemarkupContent($object, $content) {
+    $parts = array();
+    $parts[] = get_class($object);
+
+    if ($object instanceof PhabricatorLiskDAO) {
+      $parts[] = $object->getID();
+    }
+
+    $parts[] = $content;
+
+    $message = implode("\n", $parts);
+
+    return PhabricatorHash::digestWithNamedKey($message, 'remarkup');
   }
 
 }

@@ -9,7 +9,9 @@ final class PhabricatorCountdown extends PhabricatorCountdownDAO
     PhabricatorApplicationTransactionInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorSpacesInterface,
-    PhabricatorProjectInterface {
+    PhabricatorProjectInterface,
+    PhabricatorDestructibleInterface,
+    PhabricatorConduitResultInterface {
 
   protected $title;
   protected $authorPHID;
@@ -140,18 +142,59 @@ final class PhabricatorCountdown extends PhabricatorCountdownDAO
     return false;
   }
 
-  public function describeAutomaticCapability($capability) {
-    return false;
-  }
-
 /* -( PhabricatorSpacesInterface )------------------------------------------- */
+
 
   public function getSpacePHID() {
     return $this->spacePHID;
   }
 
+/* -(  PhabricatorDestructibleInterface  )----------------------------------- */
 
-/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+  public function destroyObjectPermanently(
+      PhabricatorDestructionEngine $engine) {
+
+    $this->openTransaction();
+    $this->delete();
+    $this->saveTransaction();
+  }
+
+/* -(  PhabricatorConduitResultInterface  )---------------------------------- */
+
+
+  public function getFieldSpecificationsForConduit() {
+    return array(
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('title')
+        ->setType('string')
+        ->setDescription(pht('The title of the countdown.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('description')
+        ->setType('remarkup')
+        ->setDescription(pht('The description of the countdown.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('epoch')
+        ->setType('epoch')
+        ->setDescription(pht('The end date of the countdown.')),
+    );
+  }
+
+  public function getFieldValuesForConduit() {
+    return array(
+      'title' => $this->getTitle(),
+      'description' => array(
+        'raw' => $this->getDescription(),
+      ),
+      'epoch' => (int)$this->getEpoch(),
+    );
+  }
+
+  public function getConduitSearchAttachments() {
+    return array();
+  }
+
+  /* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
 
 
   public function getAuthor() {

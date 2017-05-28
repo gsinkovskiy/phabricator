@@ -5,7 +5,6 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
     PhabricatorPolicyInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorSubscribableInterface,
-    PhabricatorTokenReceiverInterface,
     PhabricatorFlaggableInterface,
     PhabricatorAuthorAwareInterface,
     PhabricatorDestructibleInterface,
@@ -21,8 +20,6 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
   protected $editPolicy;
   protected $status;
   protected $creatorPHID;
-
-  private $awards = self::ATTACHABLE;
 
   const STATUS_ACTIVE = 'open';
   const STATUS_ARCHIVED = 'closed';
@@ -86,15 +83,6 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
     return ($this->getStatus() == self::STATUS_ARCHIVED);
   }
 
-  public function attachAwards(array $awards) {
-    $this->awards = $awards;
-    return $this;
-  }
-
-  public function getAwards() {
-    return $this->assertAttached($this->awards);
-  }
-
   public function getViewURI() {
     return '/badges/view/'.$this->getID().'/';
   }
@@ -130,10 +118,6 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
     return false;
   }
 
-  public function describeAutomaticCapability($capability) {
-    return null;
-  }
-
 
 /* -(  PhabricatorApplicationTransactionInterface  )------------------------- */
 
@@ -162,15 +146,7 @@ final class PhabricatorBadgesBadge extends PhabricatorBadgesDAO
 
 
   public function isAutomaticallySubscribed($phid) {
-    return ($this->creatorPHID == $phid);
-  }
-
-
-/* -(  PhabricatorTokenReceiverInterface  )---------------------------------- */
-
-
-  public function getUsersToNotifyOfTokenGiven() {
-    return array($this->getCreatorPHID());
+    return false;
   }
 
 

@@ -5,12 +5,13 @@ final class ConpherenceThread extends ConpherenceDAO
     PhabricatorPolicyInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorMentionableInterface,
-    PhabricatorDestructibleInterface {
+    PhabricatorDestructibleInterface,
+    PhabricatorNgramsInterface {
 
   protected $title;
-  protected $imagePHIDs = array();
+  protected $topic;
+  protected $profileImagePHID;
   protected $messageCount;
-  protected $recentParticipantPHIDs = array();
   protected $mailKey;
   protected $viewPolicy;
   protected $editPolicy;
@@ -18,10 +19,8 @@ final class ConpherenceThread extends ConpherenceDAO
 
   private $participants = self::ATTACHABLE;
   private $transactions = self::ATTACHABLE;
+  private $profileImageFile = self::ATTACHABLE;
   private $handles = self::ATTACHABLE;
-  private $filePHIDs = self::ATTACHABLE;
-  private $widgetData = self::ATTACHABLE;
-  private $images = self::ATTACHABLE;
 
   public static function initializeNewRoom(PhabricatorUser $sender) {
     $default_policy = id(new ConpherenceThreadMembersPolicyRule())
@@ -29,26 +28,23 @@ final class ConpherenceThread extends ConpherenceDAO
     return id(new ConpherenceThread())
       ->setMessageCount(0)
       ->setTitle('')
+      ->setTopic('')
       ->attachParticipants(array())
-      ->attachFilePHIDs(array())
-      ->attachImages(array())
       ->setViewPolicy($default_policy)
       ->setEditPolicy($default_policy)
-      ->setJoinPolicy($default_policy);
+      ->setJoinPolicy('');
   }
 
   protected function getConfiguration() {
     return array(
       self::CONFIG_AUX_PHID => true,
-      self::CONFIG_SERIALIZATION => array(
-        'recentParticipantPHIDs' => self::SERIALIZATION_JSON,
-        'imagePHIDs' => self::SERIALIZATION_JSON,
-      ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'title' => 'text255?',
+        'topic' => 'text255',
         'messageCount' => 'uint64',
         'mailKey' => 'text20',
         'joinPolicy' => 'policy',
+        'profileImagePHID' => 'phid?',
       ),
       self::CONFIG_KEY_SCHEMA => array(
         'key_phid' => null,
@@ -76,32 +72,8 @@ final class ConpherenceThread extends ConpherenceDAO
     return 'Z'.$this->getID();
   }
 
-  public function getImagePHID($size) {
-    $image_phids = $this->getImagePHIDs();
-    return idx($image_phids, $size);
-  }
-  public function setImagePHID($phid, $size) {
-    $image_phids = $this->getImagePHIDs();
-    $image_phids[$size] = $phid;
-    return $this->setImagePHIDs($image_phids);
-  }
-
-  public function getImage($size) {
-    $images = $this->getImages();
-    return idx($images, $size);
-  }
-  public function setImage(PhabricatorFile $file, $size) {
-    $files = $this->getImages();
-    $files[$size] = $file;
-    return $this->attachImages($files);
-  }
-  public function attachImages(array $files) {
-    assert_instances_of($files, 'PhabricatorFile');
-    $this->images = $files;
-    return $this;
-  }
-  private function getImages() {
-    return $this->assertAttached($this->images);
+  public function getURI() {
+    return '/'.$this->getMonogram();
   }
 
   public function attachParticipants(array $participants) {
@@ -109,13 +81,16 @@ final class ConpherenceThread extends ConpherenceDAO
     $this->participants = $participants;
     return $this;
   }
+
   public function getParticipants() {
     return $this->assertAttached($this->participants);
   }
+
   public function getParticipant($phid) {
     $participants = $this->getParticipants();
     return $participants[$phid];
   }
+
   public function getParticipantIfExists($phid, $default = null) {
     $participants = $this->getParticipants();
     return idx($participants, $phid, $default);
@@ -131,6 +106,7 @@ final class ConpherenceThread extends ConpherenceDAO
     $this->handles = $handles;
     return $this;
   }
+
   public function getHandles() {
     return $this->assertAttached($this->handles);
   }
@@ -140,9 +116,11 @@ final class ConpherenceThread extends ConpherenceDAO
     $this->transactions = $transactions;
     return $this;
   }
+
   public function getTransactions($assert_attached = true) {
     return $this->assertAttached($this->transactions);
   }
+
   public function hasAttachedTransactions() {
     return $this->transactions !== self::ATTACHABLE;
   }
@@ -156,30 +134,17 @@ final class ConpherenceThread extends ConpherenceDAO
       $amount);
   }
 
-  public function attachFilePHIDs(array $file_phids) {
-    $this->filePHIDs = $file_phids;
+  public function getProfileImageURI() {
+    return $this->getProfileImageFile()->getBestURI();
+  }
+
+  public function attachProfileImageFile(PhabricatorFile $file) {
+    $this->profileImageFile = $file;
     return $this;
   }
-  public function getFilePHIDs() {
-    return $this->assertAttached($this->filePHIDs);
-  }
 
-  public function attachWidgetData(array $widget_data) {
-    $this->widgetData = $widget_data;
-    return $this;
-  }
-  public function getWidgetData() {
-    return $this->assertAttached($this->widgetData);
-  }
-
-  public function loadImageURI($size) {
-    $file = $this->getImage($size);
-
-    if ($file) {
-      return $file->getBestURI();
-    }
-
-    return PhabricatorUser::getDefaultProfileImageURI();
+  public function getProfileImageFile() {
+    return $this->assertAttached($this->profileImageFile);
   }
 
   /**
@@ -200,72 +165,6 @@ final class ConpherenceThread extends ConpherenceDAO
     return pht('Private Room');
   }
 
-  /**
-   * Get the thread's display title for a user.
-   *
-   * If a thread doesn't have a title set, this will return a string describing
-   * recent participants.
-   *
-   * @param PhabricatorUser Viewer.
-   * @return string Thread title.
-   */
-  public function getDisplayTitle(PhabricatorUser $viewer) {
-    $title = $this->getTitle();
-    if (strlen($title)) {
-      return $title;
-    }
-
-    return $this->getRecentParticipantsString($viewer);
-  }
-
-
-  /**
-   * Get recent participants (other than the viewer) as a string.
-   *
-   * For example, this method might return "alincoln, htaft, gwashington...".
-   *
-   * @param PhabricatorUser Viewer.
-   * @return string Description of other participants.
-   */
-  private function getRecentParticipantsString(PhabricatorUser $viewer) {
-    $handles = $this->getHandles();
-    $phids = $this->getOtherRecentParticipantPHIDs($viewer);
-
-    if (count($phids) == 0) {
-      $phids[] = $viewer->getPHID();
-      $more = false;
-    } else {
-      $limit = 3;
-      $more = (count($phids) > $limit);
-      $phids = array_slice($phids, 0, $limit);
-    }
-
-    $names = array_select_keys($handles, $phids);
-    $names = mpull($names, 'getName');
-    $names = implode(', ', $names);
-
-    if ($more) {
-      $names = $names.'...';
-    }
-
-    return $names;
-  }
-
-
-  /**
-   * Get PHIDs for recent participants who are not the viewer.
-   *
-   * @param PhabricatorUser Viewer.
-   * @return list<phid> Participants who are not the viewer.
-   */
-  private function getOtherRecentParticipantPHIDs(PhabricatorUser $viewer) {
-    $phids = $this->getRecentParticipantPHIDs();
-    $phids = array_fuse($phids);
-    unset($phids[$viewer->getPHID()]);
-    return array_values($phids);
-  }
-
-
   public function getDisplayData(PhabricatorUser $viewer) {
     $handles = $this->getHandles();
 
@@ -275,80 +174,60 @@ final class ConpherenceThread extends ConpherenceDAO
       $transactions = array();
     }
 
-    if ($transactions) {
-      $subtitle_mode = 'message';
-    } else {
-      $subtitle_mode = 'recent';
-    }
+    $img_src = $this->getProfileImageURI();
 
-    $lucky_phid = head($this->getOtherRecentParticipantPHIDs($viewer));
-    if ($lucky_phid) {
-      $lucky_handle = $handles[$lucky_phid];
-    } else {
-      // This will be just the user talking to themselves. Weirdo.
-      $lucky_handle = reset($handles);
-    }
-
-    $img_src = null;
-    $size = ConpherenceImageData::SIZE_CROP;
-    if ($this->getImagePHID($size)) {
-      $img_src = $this->getImage($size)->getBestURI();
-    } else if ($lucky_handle) {
-      $img_src = $lucky_handle->getImageURI();
-    }
-
-    $message_title = null;
-    if ($subtitle_mode == 'message') {
-      $message_transaction = null;
-      foreach ($transactions as $transaction) {
-        switch ($transaction->getTransactionType()) {
-          case PhabricatorTransactions::TYPE_COMMENT:
-            $message_transaction = $transaction;
-            break 2;
-          default:
-            break;
-        }
-      }
+    $message_transaction = null;
+    foreach ($transactions as $transaction) {
       if ($message_transaction) {
-        $message_handle = $handles[$message_transaction->getAuthorPHID()];
-        $message_title = sprintf(
-          '%s: %s',
-          $message_handle->getName(),
-          id(new PhutilUTF8StringTruncator())
-            ->setMaximumGlyphs(60)
-            ->truncateString(
-              $message_transaction->getComment()->getContent()));
+        break;
+      }
+      switch ($transaction->getTransactionType()) {
+        case PhabricatorTransactions::TYPE_COMMENT:
+          $message_transaction = $transaction;
+          break;
+        default:
+          break;
       }
     }
-    switch ($subtitle_mode) {
-      case 'recent':
-        $subtitle = $this->getRecentParticipantsString($viewer);
-        break;
-      case 'message':
-        if ($message_title) {
-          $subtitle = $message_title;
-        } else {
-          $subtitle = $this->getRecentParticipantsString($viewer);
-        }
-        break;
+    if ($message_transaction) {
+      $message_handle = $handles[$message_transaction->getAuthorPHID()];
+      $subtitle = sprintf(
+        '%s: %s',
+        $message_handle->getName(),
+        id(new PhutilUTF8StringTruncator())
+          ->setMaximumGlyphs(60)
+          ->truncateString(
+            $message_transaction->getComment()->getContent()));
+    } else {
+      // Kinda lame, but maybe add last message to cache?
+      $subtitle = pht('No recent messages');
     }
 
     $user_participation = $this->getParticipantIfExists($viewer->getPHID());
+    $theme = ConpherenceRoomSettings::COLOR_LIGHT;
     if ($user_participation) {
       $user_seen_count = $user_participation->getSeenMessageCount();
+      $participant = $this->getParticipant($viewer->getPHID());
+      $settings = $participant->getSettings();
+      $theme = idx($settings, 'theme', $theme);
     } else {
       $user_seen_count = 0;
     }
-    $unread_count = $this->getMessageCount() - $user_seen_count;
 
-    $title = $this->getDisplayTitle($viewer);
+    $unread_count = $this->getMessageCount() - $user_seen_count;
+    $theme_class = ConpherenceRoomSettings::getThemeClass($theme);
+
+    $title = $this->getTitle();
+    $topic = $this->getTopic();
 
     return array(
       'title' => $title,
+      'topic' => $topic,
       'subtitle' => $subtitle,
       'unread_count' => $unread_count,
       'epoch' => $this->getDateModified(),
       'image' => $img_src,
+      'theme' => $theme_class,
     );
   }
 
@@ -360,7 +239,6 @@ final class ConpherenceThread extends ConpherenceDAO
     return array(
       PhabricatorPolicyCapability::CAN_VIEW,
       PhabricatorPolicyCapability::CAN_EDIT,
-      PhabricatorPolicyCapability::CAN_JOIN,
     );
   }
 
@@ -370,8 +248,6 @@ final class ConpherenceThread extends ConpherenceDAO
         return $this->getViewPolicy();
       case PhabricatorPolicyCapability::CAN_EDIT:
         return $this->getEditPolicy();
-      case PhabricatorPolicyCapability::CAN_JOIN:
-        return $this->getJoinPolicy();
     }
     return PhabricatorPolicies::POLICY_NOONE;
   }
@@ -384,7 +260,6 @@ final class ConpherenceThread extends ConpherenceDAO
 
     switch ($capability) {
       case PhabricatorPolicyCapability::CAN_EDIT:
-      case PhabricatorPolicyCapability::CAN_JOIN:
         return false;
     }
 
@@ -448,6 +323,16 @@ final class ConpherenceThread extends ConpherenceDAO
     PhabricatorApplicationTransactionView $timeline,
     AphrontRequest $request) {
     return $timeline;
+  }
+
+/* -(  PhabricatorNgramInterface  )------------------------------------------ */
+
+
+  public function newNgrams() {
+    return array(
+      id(new ConpherenceThreadTitleNgrams())
+        ->setValue($this->getTitle()),
+      );
   }
 
 

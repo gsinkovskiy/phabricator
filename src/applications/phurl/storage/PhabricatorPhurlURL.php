@@ -10,7 +10,9 @@ final class PhabricatorPhurlURL extends PhabricatorPhurlDAO
   PhabricatorMentionableInterface,
   PhabricatorFlaggableInterface,
   PhabricatorAuthorAwareInterface,
-  PhabricatorSpacesInterface {
+  PhabricatorSpacesInterface,
+  PhabricatorConduitResultInterface,
+  PhabricatorNgramsInterface {
 
   protected $name;
   protected $alias;
@@ -100,10 +102,18 @@ final class PhabricatorPhurlURL extends PhabricatorPhurlDAO
 
   public function getRedirectURI() {
     if (strlen($this->getAlias())) {
-      return '/u/'.$this->getAlias();
+      $path = '/u/'.$this->getAlias();
     } else {
-      return '/u/'.$this->getID();
+      $path = '/u/'.$this->getID();
     }
+    $domain = PhabricatorEnv::getEnvConfig('phurl.short-uri');
+    if (!$domain) {
+      $domain = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
+    }
+
+    $uri = new PhutilURI($domain);
+    $uri->setPath($path);
+    return (string)$uri;
   }
 
 /* -(  PhabricatorPolicyInterface  )----------------------------------------- */
@@ -196,12 +206,61 @@ final class PhabricatorPhurlURL extends PhabricatorPhurlDAO
     return $this->spacePHID;
   }
 
+/* -(  PhabricatorConduitResultInterface  )---------------------------------- */
 
-/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+  public function getFieldSpecificationsForConduit() {
+    return array(
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('name')
+        ->setType('string')
+        ->setDescription(pht('URL name.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('alias')
+        ->setType('string')
+        ->setDescription(pht('The alias for the URL.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('longurl')
+        ->setType('string')
+        ->setDescription(pht('The pre-shortened URL.')),
+      id(new PhabricatorConduitSearchFieldSpecification())
+        ->setKey('description')
+        ->setType('string')
+        ->setDescription(pht('A description of the URL.')),
+    );
+  }
+
+  public function getFieldValuesForConduit() {
+    return array(
+      'name' => $this->getName(),
+      'alias' => $this->getAlias(),
+      'description' => $this->getDescription(),
+      'urls' => array(
+        'long' => $this->getLongURL(),
+        'short' => $this->getRedirectURI(),
+      ),
+    );
+  }
+
+  public function getConduitSearchAttachments() {
+    return array();
+  }
+
+/* -(  PhabricatorNgramInterface  )------------------------------------------ */
+
+
+  public function newNgrams() {
+    return array(
+      id(new PhabricatorPhurlURLNameNgrams())
+        ->setValue($this->getName()),
+    );
+  }
+
+  /* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
 
 
   public function getAuthor() {
     return $this->getAuthorPHID();
-  }
+ }
 
 }

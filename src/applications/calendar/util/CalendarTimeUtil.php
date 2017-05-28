@@ -69,7 +69,7 @@ final class CalendarTimeUtil extends Phobject {
 
     $today_epoch = PhabricatorTime::parseLocalTime('today', $user);
     $today = new DateTime('@'.$today_epoch);
-    $today->setTimeZone($timezone);
+    $today->setTimezone($timezone);
 
     if (strtolower($start_day_str) == 'today' ||
         $today->format('l') == $start_day_str) {
@@ -79,7 +79,7 @@ final class CalendarTimeUtil extends Phobject {
         'last '.$start_day_str,
         $user);
       $start_day = new DateTime('@'.$start_epoch);
-      $start_day->setTimeZone($timezone);
+      $start_day->setTimezone($timezone);
     }
     return array(
       'today' => $today,
@@ -87,4 +87,18 @@ final class CalendarTimeUtil extends Phobject {
     );
   }
 
+  public static function getNthBusinessDay($epoch, $n) {
+    // Sadly, there are not many holidays. So we can load all of them.
+    $interval = ($n > 0 ? 1 : -1) * 24 * 60 * 60;
+
+    $return = $epoch;
+    for ($i = abs($n); $i > 0; ) {
+      $return += $interval;
+      $weekday = date('w', $return);
+      if ($weekday != 0 && $weekday != 6 ) { // Sunday and Saturday
+        $i--;
+      }
+    }
+    return $return;
+  }
 }

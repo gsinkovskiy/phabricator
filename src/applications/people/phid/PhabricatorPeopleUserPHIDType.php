@@ -61,12 +61,19 @@ final class PhabricatorPeopleUserPHIDType extends PhabricatorPHIDType {
       }
 
       $availability = null;
-      if (!$user->isUserActivated()) {
+      if ($user->getIsDisabled()) {
         $availability = PhabricatorObjectHandle::AVAILABILITY_DISABLED;
+      } else if (!$user->isResponsive()) {
+        $availability = PhabricatorObjectHandle::AVAILABILITY_NOEMAIL;
       } else {
         $until = $user->getAwayUntil();
         if ($until) {
-          $availability = PhabricatorObjectHandle::AVAILABILITY_NONE;
+          $away = PhabricatorCalendarEventInvitee::AVAILABILITY_AWAY;
+          if ($user->getDisplayAvailability() == $away) {
+            $availability = PhabricatorObjectHandle::AVAILABILITY_NONE;
+          } else {
+            $availability = PhabricatorObjectHandle::AVAILABILITY_PARTIAL;
+          }
         }
       }
 

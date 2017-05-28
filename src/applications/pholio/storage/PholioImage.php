@@ -84,8 +84,8 @@ final class PholioImage extends PholioDAO
 
 
   public function getMarkupFieldKey($field) {
-    $hash = PhabricatorHash::digest($this->getMarkupText($field));
-    return 'M:'.$hash;
+    $content = $this->getMarkupText($field);
+    return PhabricatorMarkupEngine::digestRemarkupContent($this, $content);
   }
 
   public function newMarkupEngine($field) {
@@ -117,10 +117,6 @@ final class PholioImage extends PholioDAO
   // really the *mock* controls who can see an image
   public function hasAutomaticCapability($capability, PhabricatorUser $viewer) {
     return $this->getMock()->hasAutomaticCapability($capability, $viewer);
-  }
-
-  public function describeAutomaticCapability($capability) {
-    return null;
   }
 
 }

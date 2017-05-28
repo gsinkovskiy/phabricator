@@ -38,6 +38,11 @@ final class PhabricatorApplicationDetailViewController
       $header->setStatus('fa-ban', 'dark', pht('Uninstalled'));
     }
 
+    $timeline = $this->buildTransactionTimeline(
+      $selected,
+      new PhabricatorApplicationApplicationTransactionQuery());
+    $timeline->setShouldTerminate(true);
+
     $curtain = $this->buildCurtain($selected);
     $details = $this->buildPropertySectionView($selected);
     $policies = $this->buildPolicyView($selected);
@@ -53,7 +58,6 @@ final class PhabricatorApplicationDetailViewController
       $panel = $config->buildConfigurationPagePanel();
       $panel->setBackground(PHUIObjectBoxView::BLUE_PROPERTY);
       $panels[] = $panel;
-
     }
 
     $view = id(new PHUITwoColumnView())
@@ -62,6 +66,7 @@ final class PhabricatorApplicationDetailViewController
       ->setMainColumn(array(
           $policies,
           $panels,
+          $timeline,
         ))
       ->addPropertySection(pht('Details'), $details);
 
@@ -126,8 +131,7 @@ final class PhabricatorApplicationDetailViewController
     $properties = id(new PHUIPropertyListView());
 
     $header = id(new PHUIHeaderView())
-      ->setHeader(pht('POLICIES'))
-      ->setHeaderIcon('fa-lock');
+      ->setHeader(pht('Policies'));
 
     $descriptions = PhabricatorPolicyQuery::renderPolicyDescriptions(
       $viewer,

@@ -28,9 +28,10 @@ final class DiffusionRepositoryStatusManagementPanel
     return 'fa-check grey';
   }
 
-  protected function buildManagementPanelActions() {
+  public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
+    $action_list = $this->getNewActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -39,14 +40,15 @@ final class DiffusionRepositoryStatusManagementPanel
 
     $update_uri = $repository->getPathURI('edit/update/');
 
-    return array(
+    $action_list->addAction(
       id(new PhabricatorActionView())
         ->setIcon('fa-refresh')
         ->setName(pht('Update Now'))
         ->setWorkflow(true)
         ->setDisabled(!$can_edit)
-        ->setHref($update_uri),
-    );
+        ->setHref($update_uri));
+
+    return $this->getNewCurtainView($action_list);
   }
 
   public function buildManagementPanelContent() {
@@ -54,8 +56,7 @@ final class DiffusionRepositoryStatusManagementPanel
     $viewer = $this->getViewer();
 
     $view = id(new PHUIPropertyListView())
-      ->setViewer($viewer)
-      ->setActionList($this->newActions());
+      ->setViewer($viewer);
 
     $view->addProperty(
       pht('Update Frequency'),
@@ -241,7 +242,7 @@ final class DiffusionRepositoryStatusManagementPanel
       }
     }
 
-    $doc_href = PhabricatorEnv::getDocLink('Managing Daemons with phd');
+    $doc_href = PhabricatorEnv::getDoclink('Managing Daemons with phd');
 
     $daemon_instructions = pht(
       'Use %s to start daemons. See %s.',
@@ -359,19 +360,12 @@ final class DiffusionRepositoryStatusManagementPanel
                 return $view;
               }
             break;
-          case PhabricatorRepositoryStatusMessage::CODE_WORKING:
+          default:
             $view->addItem(
               id(new PHUIStatusItemView())
                 ->setIcon(PHUIStatusItemView::ICON_CLOCK, 'green')
                 ->setTarget(pht('Initializing Working Copy'))
                 ->setNote(pht('Daemons are initializing the working copy.')));
-            return $view;
-          default:
-            $view->addItem(
-              id(new PHUIStatusItemView())
-                ->setIcon(PHUIStatusItemView::ICON_WARNING, 'red')
-                ->setTarget(pht('Unknown Init Status'))
-                ->setNote($message->getStatusCode()));
             return $view;
         }
       } else {

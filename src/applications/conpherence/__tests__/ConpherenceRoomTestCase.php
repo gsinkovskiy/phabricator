@@ -16,9 +16,6 @@ final class ConpherenceRoomTestCase extends ConpherenceTestCase {
 
     $this->assertTrue((bool)$conpherence->getID());
     $this->assertEqual(1, count($conpherence->getParticipants()));
-    $this->assertEqual(
-      $participant_phids,
-      $conpherence->getRecentParticipantPHIDs());
   }
 
   public function testNUserRoomCreate() {
@@ -38,9 +35,6 @@ final class ConpherenceRoomTestCase extends ConpherenceTestCase {
 
     $this->assertTrue((bool)$conpherence->getID());
     $this->assertEqual(4, count($conpherence->getParticipants()));
-    $this->assertEqual(
-      $participant_phids,
-      $conpherence->getRecentParticipantPHIDs());
   }
 
   public function testRoomParticipantAddition() {
@@ -58,16 +52,11 @@ final class ConpherenceRoomTestCase extends ConpherenceTestCase {
 
     $this->assertTrue((bool)$conpherence->getID());
     $this->assertEqual(2, count($conpherence->getParticipants()));
-    $this->assertEqual(
-      $participant_phids,
-      $conpherence->getRecentParticipantPHIDs());
 
     // test add by creator
     $participant_phids[] = $friend_2->getPHID();
     $this->addParticipants($creator, $conpherence, array($friend_2->getPHID()));
-    $this->assertEqual(
-      $participant_phids,
-      $conpherence->getRecentParticipantPHIDs());
+    $this->assertEqual(3, count($conpherence->getParticipants()));
 
     // test add by other participant, so recent participation should
     // meaningfully change
@@ -81,9 +70,7 @@ final class ConpherenceRoomTestCase extends ConpherenceTestCase {
       $friend_2,
       $conpherence,
       array($friend_3->getPHID()));
-    $this->assertEqual(
-      $participant_phids,
-      $conpherence->getRecentParticipantPHIDs());
+    $this->assertEqual(4, count($conpherence->getParticipants()));
   }
 
   public function testRoomParticipantDeletion() {
@@ -112,25 +99,6 @@ final class ConpherenceRoomTestCase extends ConpherenceTestCase {
     }
   }
 
-  public function testAddMessageWithFileAttachments() {
-    $creator = $this->generateNewTestUser();
-    $friend_1 = $this->generateNewTestUser();
-
-    $participant_map = array(
-      $creator->getPHID() => $creator,
-      $friend_1->getPHID() => $friend_1,
-    );
-
-    $conpherence = $this->createRoom(
-      $creator,
-      array_keys($participant_map));
-
-    foreach ($participant_map as $phid => $user) {
-      $xactions = $this->addMessageWithFile($user, $conpherence);
-      $this->assertEqual(2, count($xactions));
-    }
-  }
-
   private function createRoom(
     PhabricatorUser $creator,
     array $participant_phids) {
@@ -139,10 +107,12 @@ final class ConpherenceRoomTestCase extends ConpherenceTestCase {
 
     $xactions = array();
     $xactions[] = id(new ConpherenceTransaction())
-      ->setTransactionType(ConpherenceTransaction::TYPE_PARTICIPANTS)
+      ->setTransactionType(
+        ConpherenceThreadParticipantsTransaction::TRANSACTIONTYPE)
       ->setNewValue(array('+' => $participant_phids));
     $xactions[] = id(new ConpherenceTransaction())
-      ->setTransactionType(ConpherenceTransaction::TYPE_TITLE)
+      ->setTransactionType(
+        ConpherenceThreadTitleTransaction::TRANSACTIONTYPE)
       ->setNewValue(pht('Test'));
 
     id(new ConpherenceEditor())

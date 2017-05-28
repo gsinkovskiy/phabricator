@@ -68,11 +68,11 @@ final class PhabricatorEnv extends Phobject {
    * @phutil-external-symbol class PhabricatorStartup
    */
   public static function initializeWebEnvironment() {
-    self::initializeCommonEnvironment();
+    self::initializeCommonEnvironment(false);
   }
 
-  public static function initializeScriptEnvironment() {
-    self::initializeCommonEnvironment();
+  public static function initializeScriptEnvironment($config_optional) {
+    self::initializeCommonEnvironment($config_optional);
 
     // NOTE: This is dangerous in general, but we know we're in a script context
     // and are not vulnerable to CSRF.
@@ -88,11 +88,11 @@ final class PhabricatorEnv extends Phobject {
   }
 
 
-  private static function initializeCommonEnvironment() {
+  private static function initializeCommonEnvironment($config_optional) {
     PhutilErrorHandler::initialize();
 
     self::resetUmask();
-    self::buildConfigurationSourceStack();
+    self::buildConfigurationSourceStack($config_optional);
 
     // Force a valid timezone. If both PHP and Phabricator configuration are
     // invalid, use UTC.
@@ -174,7 +174,7 @@ final class PhabricatorEnv extends Phobject {
     }
   }
 
-  private static function buildConfigurationSourceStack() {
+  private static function buildConfigurationSourceStack($config_optional) {
     self::dropConfigCache();
 
     $stack = new PhabricatorConfigStackSource();
@@ -202,6 +202,12 @@ final class PhabricatorEnv extends Phobject {
       phutil_load_library($library);
     }
 
+    // Drop any class map caches, since they will have generated without
+    // any classes from libraries. Without this, preflight setup checks can
+    // cause generation of a setup check cache that omits checks defined in
+    // libraries, for example.
+    PhutilClassMapQuery::deleteCaches();
+
     // If custom libraries specify config options, they won't get default
     // values as the Default source has already been loaded, so we get it to
     // pull in all options from non-phabricator libraries now they are loaded.
@@ -217,13 +223,24 @@ final class PhabricatorEnv extends Phobject {
       $stack->pushSource($site_source);
     }
 
-    $master = PhabricatorDatabaseRef::getMasterDatabaseRef();
-    if (!$master) {
+    $masters = PhabricatorDatabaseRef::getMasterDatabaseRefs();
+    if (!$masters) {
       self::setReadOnly(true, self::READONLY_MASTERLESS);
-    } else if ($master->isSevered()) {
-      $master->checkHealth();
-      if ($master->isSevered()) {
-        self::setReadOnly(true, self::READONLY_SEVERED);
+    } else {
+      // If any master is severed, we drop to readonly mode. In theory we
+      // could try to continue if we're only missing some applications, but
+      // this is very complex and we're unlikely to get it right.
+
+      foreach ($masters as $master) {
+        // Give severed masters one last chance to get healthy.
+        if ($master->isSevered()) {
+          $master->checkHealth();
+        }
+
+        if ($master->isSevered()) {
+          self::setReadOnly(true, self::READONLY_SEVERED);
+          break;
+        }
       }
     }
 
@@ -231,10 +248,16 @@ final class PhabricatorEnv extends Phobject {
       $stack->pushSource(
         id(new PhabricatorConfigDatabaseSource('default'))
           ->setName(pht('Database')));
-    } catch (AphrontQueryException $exception) {
+    } catch (AphrontSchemaQueryException $exception) {
       // If the database is not available, just skip this configuration
       // source. This happens during `bin/storage upgrade`, `bin/conf` before
       // schema setup, etc.
+    } catch (PhabricatorClusterStrandedException $ex) {
+      // This means we can't connect to any database host. That's fine as
+      // long as we're running a setup script like `bin/storage`.
+      if (!$config_optional) {
+        throw $ex;
+      }
     }
   }
 
@@ -307,12 +330,28 @@ final class PhabricatorEnv extends Phobject {
    * @task read
    */
   public static function getEnvConfig($key) {
+    if (!self::$sourceStack) {
+      throw new Exception(
+        pht(
+          'Trying to read configuration "%s" before configuration has been '.
+          'initialized.',
+          $key));
+    }
+
     if (isset(self::$cache[$key])) {
       return self::$cache[$key];
     }
 
     if (array_key_exists($key, self::$cache)) {
       return self::$cache[$key];
+    }
+
+    if (!self::$sourceStack) {
+      throw new Exception(
+        pht(
+          'Trying to read configuration "%s" before configuration has been '.
+          'initialized.',
+          $key));
     }
 
     $result = self::$sourceStack->getKeys(array($key));
@@ -326,7 +365,6 @@ final class PhabricatorEnv extends Phobject {
           $key));
     }
   }
-
 
   /**
    * Get the current configuration setting for a given key. If the key
@@ -376,21 +414,44 @@ final class PhabricatorEnv extends Phobject {
     return rtrim($production_domain, '/').$path;
   }
 
-  public static function getAllowedURIs($path) {
-    $uri = new PhutilURI($path);
-    if ($uri->getDomain()) {
-      return $path;
+
+  public static function isSelfURI($raw_uri) {
+    $uri = new PhutilURI($raw_uri);
+
+    $host = $uri->getDomain();
+    if (!strlen($host)) {
+      return false;
     }
 
-    $allowed_uris = self::getEnvConfig('phabricator.allowed-uris');
-    $return = array();
-    foreach ($allowed_uris as $allowed_uri) {
-      $return[] = rtrim($allowed_uri, '/').$path;
-    }
+    $host = phutil_utf8_strtolower($host);
 
-    return $return;
+    $self_map = self::getSelfURIMap();
+    return isset($self_map[$host]);
   }
 
+  private static function getSelfURIMap() {
+    $self_uris = array();
+    $self_uris[] = self::getProductionURI('/');
+    $self_uris[] = self::getURI('/');
+
+    $allowed_uris = self::getEnvConfig('phabricator.allowed-uris');
+    foreach ($allowed_uris as $allowed_uri) {
+      $self_uris[] = $allowed_uri;
+    }
+
+    $self_map = array();
+    foreach ($self_uris as $self_uri) {
+      $host = id(new PhutilURI($self_uri))->getDomain();
+      if (!strlen($host)) {
+        continue;
+      }
+
+      $host = phutil_utf8_strtolower($host);
+      $self_map[$host] = $host;
+    }
+
+    return $self_map;
+  }
 
   /**
    * Get the fully-qualified production URI for a static resource path.
@@ -707,10 +768,10 @@ final class PhabricatorEnv extends Phobject {
    * @task uri
    */
   public static function requireValidRemoteURIForFetch(
-    $uri,
+    $raw_uri,
     array $protocols) {
 
-    $uri = new PhutilURI($uri);
+    $uri = new PhutilURI($raw_uri);
 
     $proto = $uri->getProtocol();
     if (!strlen($proto)) {
@@ -718,7 +779,7 @@ final class PhabricatorEnv extends Phobject {
         pht(
           'URI "%s" is not a valid fetchable resource. A valid fetchable '.
           'resource URI must specify a protocol.',
-          $uri));
+          $raw_uri));
     }
 
     $protocols = array_fuse($protocols);
@@ -727,7 +788,7 @@ final class PhabricatorEnv extends Phobject {
         pht(
           'URI "%s" is not a valid fetchable resource. A valid fetchable '.
           'resource URI must use one of these protocols: %s.',
-          $uri,
+          $raw_uri,
           implode(', ', array_keys($protocols))));
     }
 
@@ -737,7 +798,7 @@ final class PhabricatorEnv extends Phobject {
         pht(
           'URI "%s" is not a valid fetchable resource. A valid fetchable '.
           'resource URI must specify a domain.',
-          $uri));
+          $raw_uri));
     }
 
     $addresses = gethostbynamel($domain);
@@ -746,7 +807,7 @@ final class PhabricatorEnv extends Phobject {
         pht(
           'URI "%s" is not a valid fetchable resource. The domain "%s" could '.
           'not be resolved.',
-          $uri,
+          $raw_uri,
           $domain));
     }
 
@@ -757,7 +818,7 @@ final class PhabricatorEnv extends Phobject {
             'URI "%s" is not a valid fetchable resource. The domain "%s" '.
             'resolves to the address "%s", which is blacklisted for '.
             'outbound requests.',
-            $uri,
+            $raw_uri,
             $domain,
             $address));
       }
@@ -788,12 +849,12 @@ final class PhabricatorEnv extends Phobject {
       return false;
     }
 
-    $address = idx($_SERVER, 'REMOTE_ADDR');
+    $address = self::getRemoteAddress();
     if (!$address) {
       throw new Exception(
         pht(
           'Unable to test remote address against cluster whitelist: '.
-          'REMOTE_ADDR is not defined.'));
+          'REMOTE_ADDR is not defined or not valid.'));
     }
 
     return self::isClusterAddress($address);
@@ -812,6 +873,19 @@ final class PhabricatorEnv extends Phobject {
 
     return PhutilCIDRList::newList($cluster_addresses)
       ->containsAddress($address);
+  }
+
+  public static function getRemoteAddress() {
+    $address = idx($_SERVER, 'REMOTE_ADDR');
+    if (!$address) {
+      return null;
+    }
+
+    try {
+      return PhutilIPAddress::newAddress($address);
+    } catch (Exception $ex) {
+      return null;
+    }
   }
 
 /* -(  Internals  )---------------------------------------------------------- */

@@ -20,8 +20,7 @@ final class DifferentialRevisionSearchEngine
       ->needFlags(true)
       ->needDrafts(true)
       ->needActiveDiffs(true)
-      ->needRelationships(true)
-      ->needReviewerStatus(true);
+      ->needReviewers(true);
   }
 
   protected function buildQueryFromParameters(array $map) {
@@ -76,7 +75,7 @@ final class DifferentialRevisionSearchEngine
         ->setLabel(pht('Repositories'))
         ->setKey('repositoryPHIDs')
         ->setAliases(array('repository', 'repositories', 'repositoryPHID'))
-        ->setDatasource(new DifferentialRepositoryDatasource())
+        ->setDatasource(new DiffusionRepositoryFunctionDatasource())
         ->setDescription(
           pht('Find revisions from specific repositories.')),
       id(new PhabricatorSearchSelectField())
@@ -164,10 +163,13 @@ final class DifferentialRevisionSearchEngine
         $groups = $bucket->newResultGroups($query, $revisions);
 
         foreach ($groups as $group) {
-          $views[] = id(clone $template)
-            ->setHeader($group->getName())
-            ->setNoDataString($group->getNoDataString())
-            ->setRevisions($group->getObjects());
+          // Don't show groups in Dashboard Panels
+          if ($group->getObjects() || !$this->isPanelContext()) {
+            $views[] = id(clone $template)
+              ->setHeader($group->getName())
+              ->setNoDataString($group->getNoDataString())
+              ->setRevisions($group->getObjects());
+          }
         }
       } catch (Exception $ex) {
         $this->addError($ex->getMessage());
@@ -176,6 +178,12 @@ final class DifferentialRevisionSearchEngine
       $views[] = id(clone $template)
         ->setRevisions($revisions)
         ->setHandles(array());
+    }
+
+    if (!$views) {
+      $views[] = id(new DifferentialRevisionListView())
+        ->setUser($viewer)
+        ->setNoDataString(pht('No revisions found.'));
     }
 
     $phids = array_mergev(mpull($views, 'getRequiredHandlePHIDs'));

@@ -32,6 +32,18 @@ JX.install('KeyboardShortcutManager', {
       down: 1
     },
 
+    /**
+     * Some keys require Alt to be pressed in order to type them on certain
+     * keyboard layouts.
+     */
+    _altkeys: {
+      // "Alt+L" on German layouts.
+      '@': 1,
+
+      // "Alt+Shift+7" on German layouts.
+      '\\': 1
+    },
+
     getInstance : function() {
       if (!JX.KeyboardShortcutManager._instance) {
         JX.KeyboardShortcutManager._instance = new JX.KeyboardShortcutManager();
@@ -42,7 +54,6 @@ JX.install('KeyboardShortcutManager', {
 
   members : {
     _shortcuts : null,
-    _focusReticle : null,
 
     /**
      * Instead of calling this directly, you should call
@@ -71,59 +82,27 @@ JX.install('KeyboardShortcutManager', {
       JX.DOM.scrollToPosition(0, node_position.y + scroll_distance.y - 60);
     },
 
-    /**
-     * Move the keyboard shortcut focus to an element.
-     *
-     * @param Node Node to focus, or pass null to clear the focus.
-     * @param Node To focus multiple nodes (like rows in a table), specify the
-     *             top-left node as the first parameter and the bottom-right
-     *             node as the focus extension.
-     * @return void
-     */
-    focusOn : function(node, extended_node) {
-      this._clearReticle();
-
-      if (!node) {
-        return;
-      }
-
-      var r = JX.$N('div', {className : 'keyboard-focus-focus-reticle'});
-
-      extended_node = extended_node || node;
-
-      // Outset the reticle some pixels away from the element, so there's some
-      // space between the focused element and the outline.
-      var p = JX.Vector.getPos(node);
-      var s = JX.Vector.getAggregateScrollForNode(node);
-
-      p.add(s).add(-4, -4).setPos(r);
-      // Compute the size we need to extend to the full extent of the focused
-      // nodes.
-      JX.Vector.getPos(extended_node)
-        .add(-p.x, -p.y)
-        .add(JX.Vector.getDim(extended_node))
-        .add(8, 8)
-        .setDim(r);
-      JX.DOM.getContentFrame().appendChild(r);
-
-      this._focusReticle = r;
-    },
-
-    _clearReticle : function() {
-      this._focusReticle && JX.DOM.remove(this._focusReticle);
-      this._focusReticle = null;
-    },
     _onkeypress : function(e) {
       if (!(this._getKey(e) in JX.KeyboardShortcutManager._downkeys)) {
         this._onkeyhit(e);
       }
     },
     _onkeyhit : function(e) {
+      var self = JX.KeyboardShortcutManager;
+
       var raw = e.getRawEvent();
 
-      if (raw.altKey || raw.ctrlKey || raw.metaKey) {
+      if (raw.ctrlKey || raw.metaKey) {
         // Never activate keyboard shortcuts if modifier keys are also
         // depressed.
+        return;
+      }
+
+      // For most keystrokes, don't activate keyboard shortcuts if the Alt
+      // key is depressed. However, we continue if the character requires the
+      // use of Alt to type it on some keyboard layouts.
+      var key = this._getKey(e);
+      if (raw.altKey && !(key in self._altkeys)) {
         return;
       }
 

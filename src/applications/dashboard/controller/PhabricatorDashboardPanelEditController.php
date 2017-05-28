@@ -26,7 +26,7 @@ final class PhabricatorDashboardPanelEditController
         return new Aphront404Response();
       }
 
-      $manage_uri = $this->getApplicationURI('manage/'.$dashboard_id.'/');
+      $manage_uri = $this->getApplicationURI('arrange/'.$dashboard_id.'/');
     }
 
     if ($id) {
@@ -51,30 +51,7 @@ final class PhabricatorDashboardPanelEditController
       if (!$panel) {
         return new Aphront404Response();
       }
-      $v_projects = PhabricatorEdgeQuery::loadDestinationPHIDs(
-        $panel->getPHID(),
-        PhabricatorProjectObjectHasProjectEdgeType::EDGECONST);
-      $v_projects = array_reverse($v_projects);
 
-      if ($dashboard) {
-        $can_edit = PhabricatorPolicyFilter::hasCapability(
-          $viewer,
-          $panel,
-          PhabricatorPolicyCapability::CAN_EDIT);
-        if (!$can_edit) {
-          if ($request->isFormPost() && $request->getBool('copy')) {
-            $panel = $this->copyPanel(
-              $request,
-              $dashboard,
-              $panel);
-          } else {
-            return $this->processPanelCloneRequest(
-              $request,
-              $dashboard,
-              $panel);
-          }
-        }
-      }
     } else {
       $is_create = true;
 
@@ -84,7 +61,6 @@ final class PhabricatorDashboardPanelEditController
       if (empty($types[$type])) {
         return $this->processPanelTypeRequest($request);
       }
-      $v_projects = array();
 
       $panel->setPanelType($type);
     }
@@ -135,7 +111,6 @@ final class PhabricatorDashboardPanelEditController
       $v_name = $request->getStr('name');
       $v_view_policy = $request->getStr('viewPolicy');
       $v_edit_policy = $request->getStr('editPolicy');
-      $v_projects = $request->getArr('projects');
 
       $type_name = PhabricatorDashboardPanelTransaction::TYPE_NAME;
       $type_view_policy = PhabricatorTransactions::TYPE_VIEW_POLICY;
@@ -155,12 +130,6 @@ final class PhabricatorDashboardPanelEditController
         ->setTransactionType($type_edit_policy)
         ->setNewValue($v_edit_policy);
 
-      $proj_edge_type = PhabricatorProjectObjectHasProjectEdgeType::EDGECONST;
-      $xactions[] = id(new PhabricatorDashboardPanelTransaction())
-        ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
-        ->setMetadataValue('edge:type', $proj_edge_type)
-        ->setNewValue(array('=' => array_fuse($v_projects)));
-
       $field_xactions = $field_list->buildFieldTransactionsFromRequest(
         new PhabricatorDashboardPanelTransaction(),
         $request);
@@ -174,7 +143,7 @@ final class PhabricatorDashboardPanelEditController
           ->applyTransactions($panel, $xactions);
 
         // If we're creating a panel directly on a dashboard, add it now.
-        if ($dashboard) {
+        if ($dashboard && $is_create) {
           PhabricatorDashboardTransactionEditor::addPanelToDashboard(
             $viewer,
             PhabricatorContentSource::newFromRequest($request),
@@ -224,26 +193,23 @@ final class PhabricatorDashboardPanelEditController
           ->setLabel(pht('Name'))
           ->setName('name')
           ->setValue($v_name)
-          ->setError($e_name))
-      ->appendChild(
-        id(new AphrontFormPolicyControl())
-          ->setName('viewPolicy')
-          ->setPolicyObject($panel)
-          ->setCapability(PhabricatorPolicyCapability::CAN_VIEW)
-          ->setPolicies($policies))
-      ->appendChild(
-        id(new AphrontFormPolicyControl())
-          ->setName('editPolicy')
-          ->setPolicyObject($panel)
-          ->setCapability(PhabricatorPolicyCapability::CAN_EDIT)
-          ->setPolicies($policies));
+          ->setError($e_name));
 
-    $form->appendControl(
-      id(new AphrontFormTokenizerControl())
-        ->setLabel(pht('Tags'))
-        ->setName('projects')
-        ->setValue($v_projects)
-        ->setDatasource(new PhabricatorProjectDatasource()));
+      if (!$request->isAjax() || !$is_create) {
+        $form
+          ->appendChild(
+            id(new AphrontFormPolicyControl())
+              ->setName('viewPolicy')
+              ->setPolicyObject($panel)
+              ->setCapability(PhabricatorPolicyCapability::CAN_VIEW)
+              ->setPolicies($policies))
+          ->appendChild(
+            id(new AphrontFormPolicyControl())
+              ->setName('editPolicy')
+              ->setPolicyObject($panel)
+              ->setCapability(PhabricatorPolicyCapability::CAN_EDIT)
+              ->setPolicies($policies));
+    }
 
     $field_list->appendFieldsToForm($form);
 
@@ -382,80 +348,6 @@ final class PhabricatorDashboardPanelEditController
       ->setTitle($title)
       ->setCrumbs($crumbs)
       ->appendChild($view);
-  }
-
-  private function processPanelCloneRequest(
-    AphrontRequest $request,
-    PhabricatorDashboard $dashboard,
-    PhabricatorDashboardPanel $panel) {
-
-    $viewer = $request->getUser();
-
-    $manage_uri = $this->getApplicationURI('manage/'.$dashboard->getID().'/');
-
-    return $this->newDialog()
-      ->setTitle(pht('Copy Panel?'))
-      ->addHiddenInput('copy', true)
-      ->addHiddenInput('dashboardID', $request->getInt('dashboardID'))
-      ->addHiddenInput('column', $request->getInt('column'))
-      ->appendParagraph(
-        pht(
-          'You do not have permission to edit this dashboard panel, but you '.
-          'can make a copy and edit that instead. If you choose to copy the '.
-          'panel, the original will be replaced with the new copy on this '.
-          'dashboard.'))
-      ->appendParagraph(
-        pht(
-          'Do you want to make a copy of this panel?'))
-      ->addCancelButton($manage_uri)
-      ->addSubmitButton(pht('Copy Panel'));
-  }
-
-  private function copyPanel(
-    AphrontRequest $request,
-    PhabricatorDashboard $dashboard,
-    PhabricatorDashboardPanel $panel) {
-
-    $viewer = $request->getUser();
-
-    $copy = PhabricatorDashboardPanel::initializeNewPanel($viewer);
-    $copy = PhabricatorDashboardPanel::copyPanel($copy, $panel);
-
-    $copy->openTransaction();
-      $copy->save();
-
-      // TODO: This should record a transaction on the panel copy, too.
-
-      $xactions = array();
-      $xactions[] = id(new PhabricatorDashboardTransaction())
-        ->setTransactionType(PhabricatorTransactions::TYPE_EDGE)
-        ->setMetadataValue(
-          'edge:type',
-          PhabricatorDashboardDashboardHasPanelEdgeType::EDGECONST)
-        ->setNewValue(
-          array(
-            '+' => array(
-              $copy->getPHID() => $copy->getPHID(),
-            ),
-            '-' => array(
-              $panel->getPHID() => $panel->getPHID(),
-            ),
-          ));
-
-      $layout_config = $dashboard->getLayoutConfigObject();
-      $layout_config->replacePanel($panel->getPHID(), $copy->getPHID());
-      $dashboard->setLayoutConfigFromObject($layout_config);
-      $dashboard->save();
-
-      $editor = id(new PhabricatorDashboardTransactionEditor())
-        ->setActor($viewer)
-        ->setContentSourceFromRequest($request)
-        ->setContinueOnMissingFields(true)
-        ->setContinueOnNoEffect(true)
-        ->applyTransactions($dashboard, $xactions);
-    $copy->saveTransaction();
-
-    return $copy;
   }
 
 

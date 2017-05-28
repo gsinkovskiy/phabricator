@@ -546,6 +546,8 @@ abstract class PhabricatorApplicationTransaction
         case PhabricatorTransactions::TYPE_JOIN_POLICY:
         case PhabricatorTransactions::TYPE_SPACE:
           break;
+        case PhabricatorTransactions::TYPE_SUBTYPE:
+          return true;
         default:
           $old = $this->getOldValue();
 
@@ -553,8 +555,16 @@ abstract class PhabricatorApplicationTransaction
             return true;
           }
 
-          if (!is_array($old) && !strlen($old)) {
-            return true;
+          if (!is_array($old)) {
+            if (!strlen($old)) {
+              return true;
+            }
+
+            // The integer 0 is also uninteresting by default; this is often
+            // an "off" flag for something like "All Day Event".
+            if ($old === 0) {
+              return true;
+            }
           }
 
           break;
@@ -922,7 +932,15 @@ abstract class PhabricatorApplicationTransaction
         $type = $this->getMetadata('edge:type');
         $type = head($type);
 
-        $type_obj = PhabricatorEdgeType::getByConstant($type);
+        try {
+          $type_obj = PhabricatorEdgeType::getByConstant($type);
+        } catch (Exception $ex) {
+          // Recover somewhat gracefully from edge transactions which
+          // we don't have the classes for.
+          return pht(
+            '%s edited an edge.',
+            $this->renderHandleLink($author_phid));
+        }
 
         if ($add && $rem) {
           return $type_obj->getTransactionEditString(
@@ -952,9 +970,18 @@ abstract class PhabricatorApplicationTransaction
         if ($field) {
           return $field->getApplicationTransactionTitle($this);
         } else {
-          return pht(
-            '%s edited a custom field.',
-            $this->renderHandleLink($author_phid));
+          $developer_mode = 'phabricator.developer-mode';
+          $is_developer = PhabricatorEnv::getEnvConfig($developer_mode);
+          if ($is_developer) {
+            return pht(
+              '%s edited a custom field (with key "%s").',
+              $this->renderHandleLink($author_phid),
+              $this->getMetadata('customfield:key'));
+          } else {
+            return pht(
+              '%s edited a custom field.',
+              $this->renderHandleLink($author_phid));
+          }
         }
 
       case PhabricatorTransactions::TYPE_TOKEN:
@@ -1065,10 +1092,21 @@ abstract class PhabricatorApplicationTransaction
         break;
 
       default:
-        return pht(
-          '%s edited this %s.',
-          $this->renderHandleLink($author_phid),
-          $this->getApplicationObjectTypeName());
+        // In developer mode, provide a better hint here about which string
+        // we're missing.
+        $developer_mode = 'phabricator.developer-mode';
+        $is_developer = PhabricatorEnv::getEnvConfig($developer_mode);
+        if ($is_developer) {
+          return pht(
+            '%s edited this object (transaction type "%s").',
+            $this->renderHandleLink($author_phid),
+            $this->getTransactionType());
+        } else {
+          return pht(
+            '%s edited this %s.',
+            $this->renderHandleLink($author_phid),
+            $this->getApplicationObjectTypeName());
+        }
     }
   }
 
@@ -1111,12 +1149,20 @@ abstract class PhabricatorApplicationTransaction
           $this->renderHandleLink($author_phid),
           $this->renderHandleLink($object_phid));
       case PhabricatorTransactions::TYPE_SPACE:
-        return pht(
-          '%s shifted %s from the %s space to the %s space.',
-          $this->renderHandleLink($author_phid),
-          $this->renderHandleLink($object_phid),
-          $this->renderHandleLink($old),
-          $this->renderHandleLink($new));
+        if ($this->getIsCreateTransaction()) {
+          return pht(
+            '%s created %s in the %s space.',
+            $this->renderHandleLink($author_phid),
+            $this->renderHandleLink($object_phid),
+            $this->renderHandleLink($new));
+        } else {
+          return pht(
+            '%s shifted %s from the %s space to the %s space.',
+            $this->renderHandleLink($author_phid),
+            $this->renderHandleLink($object_phid),
+            $this->renderHandleLink($old),
+            $this->renderHandleLink($new));
+        }
       case PhabricatorTransactions::TYPE_EDGE:
         $new = ipull($new, 'dst');
         $old = ipull($old, 'dst');
@@ -1605,6 +1651,10 @@ abstract class PhabricatorApplicationTransaction
       'Transactions are visible to users that can see the object which was '.
       'acted upon. Some transactions - in particular, comments - are '.
       'editable by the transaction author.');
+  }
+
+  public function getModularType() {
+    return null;
   }
 
 

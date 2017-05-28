@@ -90,6 +90,7 @@ abstract class PhameLiveController extends PhameController {
     if (strlen($post_id)) {
       $post_query = id(new PhamePostQuery())
         ->setViewer($viewer)
+        ->needHeaderImage(true)
         ->withIDs(array($post_id));
 
       if ($blog) {
@@ -195,7 +196,9 @@ abstract class PhameLiveController extends PhameController {
     }
 
     if ($post) {
-      $crumbs->addTextCrumb($post->getTitle());
+      if (!$is_external) {
+        $crumbs->addTextCrumb('J'.$post->getID());
+      }
     }
 
     return $crumbs;

@@ -45,9 +45,10 @@ final class DiffusionRepositoryBranchesManagementPanel
     );
   }
 
-  protected function buildManagementPanelActions() {
+  public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
+    $action_list = $this->getNewActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -56,14 +57,15 @@ final class DiffusionRepositoryBranchesManagementPanel
 
     $branches_uri = $this->getEditPageURI();
 
-    return array(
+    $action_list->addAction(
       id(new PhabricatorActionView())
         ->setIcon('fa-pencil')
         ->setName(pht('Edit Branches'))
         ->setHref($branches_uri)
         ->setDisabled(!$can_edit)
-        ->setWorkflow(!$can_edit),
-    );
+        ->setWorkflow(!$can_edit));
+
+    return $this->getNewCurtainView($action_list);
   }
 
   public function buildManagementPanelContent() {
@@ -71,8 +73,7 @@ final class DiffusionRepositoryBranchesManagementPanel
     $viewer = $this->getViewer();
 
     $view = id(new PHUIPropertyListView())
-      ->setViewer($viewer)
-      ->setActionList($this->newActions());
+      ->setViewer($viewer);
 
     $default_branch = nonempty(
       $repository->getHumanReadableDetail('default-branch'),

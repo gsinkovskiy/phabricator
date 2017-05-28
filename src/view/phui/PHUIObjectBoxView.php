@@ -18,6 +18,7 @@ final class PHUIObjectBoxView extends AphrontTagView {
   private $table;
   private $collapsed = false;
   private $anchor;
+  private $pager;
 
   private $showAction;
   private $hideAction;
@@ -126,6 +127,11 @@ final class PHUIObjectBoxView extends AphrontTagView {
     return $this;
   }
 
+  public function setPager(PHUIPagerView $pager) {
+    $this->pager = $pager;
+    return $this;
+  }
+
   public function setAnchor(PhabricatorAnchorView $anchor) {
     $this->anchor = $anchor;
     return $this;
@@ -204,6 +210,7 @@ final class PHUIObjectBoxView extends AphrontTagView {
         ->addSigil('reveal-content')
         ->setID($hide_action_id)
         ->setStyle($hide_style)
+        ->setIcon('fa-search')
         ->setHref($this->showHideHref)
         ->setMetaData(
           array(
@@ -216,6 +223,7 @@ final class PHUIObjectBoxView extends AphrontTagView {
         ->setTag('a')
         ->addSigil('reveal-content')
         ->setStyle($show_style)
+        ->setIcon('fa-search')
         ->setHref('#')
         ->setID($show_action_id)
         ->setMetaData(
@@ -292,6 +300,10 @@ final class PHUIObjectBoxView extends AphrontTagView {
       $lists = null;
     }
 
+    $pager = null;
+    if ($this->pager) {
+      $pager = phutil_tag_div('phui-object-box-pager', $this->pager);
+    }
 
     $content = array(
       ($this->showHideOpen == false ? $this->anchor : null),
@@ -306,6 +318,7 @@ final class PHUIObjectBoxView extends AphrontTagView {
       ($this->showHideOpen == true ? $this->anchor : null),
       $lists,
       $this->table,
+      $pager,
       $this->renderChildren(),
     );
 

@@ -20,6 +20,21 @@ final class HeraldDifferentialRevisionAdapter
     return new DifferentialRevision();
   }
 
+  public function isTestAdapterForObject($object) {
+    return ($object instanceof DifferentialRevision);
+  }
+
+  public function getAdapterTestDescription() {
+    return pht(
+      'Test rules which run when a revision is created or updated.');
+  }
+
+  public function newTestAdapter(PhabricatorUser $viewer, $object) {
+    return self::newLegacyAdapter(
+      $object,
+      $object->loadActiveDiff());
+  }
+
   protected function initializeNewAdapter() {
     $this->revision = $this->newObject();
   }
@@ -70,8 +85,7 @@ final class HeraldDifferentialRevisionAdapter
     $revision = id(new DifferentialRevisionQuery())
       ->withIDs(array($revision->getID()))
       ->setViewer(PhabricatorUser::getOmnipotentUser())
-      ->needRelationships(true)
-      ->needReviewerStatus(true)
+      ->needReviewers(true)
       ->executeOne();
 
     $object->revision = $revision;
@@ -123,8 +137,7 @@ final class HeraldDifferentialRevisionAdapter
   }
 
   public function loadReviewers() {
-    $reviewers = $this->getObject()->getReviewerStatus();
-    return mpull($reviewers, 'getReviewerPHID');
+    return $this->getObject()->getReviewerPHIDs();
   }
 
 

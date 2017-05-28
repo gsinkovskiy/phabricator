@@ -60,6 +60,7 @@ JX.behavior('phabricator-show-older-transactions', function(config) {
 
   var show_older = function(swap, r) {
     JX.DOM.replace(swap, JX.$H(r.timeline).getFragment());
+    JX.Stratcom.invoke('resize');
   };
 
   var load_hidden_hash_callback = function(swap, r) {
@@ -96,6 +97,8 @@ JX.behavior('phabricator-show-older-transactions', function(config) {
         .setType('workflow');
       JX.Router.getInstance().queue(routable);
     });
+
+  JX.Stratcom.listen('hashchange', null, check_hash);
 
   check_hash();
 

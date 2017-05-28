@@ -17,12 +17,14 @@ final class PhabricatorPeopleQuery
   private $isApproved;
   private $nameLike;
   private $nameTokens;
+  private $namePrefixes;
+  private $isEnrolledInMultiFactor;
 
   private $needPrimaryEmail;
   private $needProfile;
   private $needProfileImage;
   private $needAvailability;
-  private $needBadges;
+  private $needBadgeAwards;
   private $cacheKeys = array();
 
   public function withIDs(array $ids) {
@@ -95,6 +97,16 @@ final class PhabricatorPeopleQuery
     return $this;
   }
 
+  public function withNamePrefixes(array $prefixes) {
+    $this->namePrefixes = $prefixes;
+    return $this;
+  }
+
+  public function withIsEnrolledInMultiFactor($enrolled) {
+    $this->isEnrolledInMultiFactor = $enrolled;
+    return $this;
+  }
+
   public function needPrimaryEmail($need) {
     $this->needPrimaryEmail = $need;
     return $this;
@@ -122,13 +134,20 @@ final class PhabricatorPeopleQuery
     return $this;
   }
 
-  public function needBadges($need) {
-    $this->needBadges = $need;
+  public function needUserSettings($need) {
+    $cache_key = PhabricatorUserPreferencesCacheType::KEY_PREFERENCES;
+
+    if ($need) {
+      $this->cacheKeys[$cache_key] = true;
+    } else {
+      unset($this->cacheKeys[$cache_key]);
+    }
+
     return $this;
   }
 
-  public function needUserSettings($need) {
-    $cache_key = PhabricatorUserPreferencesCacheType::KEY_PREFERENCES;
+  public function needBadgeAwards($need) {
+    $cache_key = PhabricatorUserBadgesCacheType::KEY_BADGES;
 
     if ($need) {
       $this->cacheKeys[$cache_key] = true;
@@ -171,21 +190,6 @@ final class PhabricatorPeopleQuery
         }
 
         $user->attachUserProfile($profile);
-      }
-    }
-
-    if ($this->needBadges) {
-      $awards = id(new PhabricatorBadgesAwardQuery())
-        ->setViewer($this->getViewer())
-        ->withRecipientPHIDs(mpull($users, 'getPHID'))
-        ->execute();
-
-      $awards = mgroup($awards, 'getRecipientPHID');
-
-      foreach ($users as $user) {
-        $user_awards = idx($awards, $user->getPHID(), array());
-        $badge_phids = mpull($user_awards, 'getBadgePHID');
-        $user->attachBadgePHIDs($badge_phids);
       }
     }
 
@@ -254,6 +258,17 @@ final class PhabricatorPeopleQuery
         $conn,
         'user.userName IN (%Ls)',
         $this->usernames);
+    }
+
+    if ($this->namePrefixes) {
+      $parts = array();
+      foreach ($this->namePrefixes as $name_prefix) {
+        $parts[] = qsprintf(
+          $conn,
+          'user.username LIKE %>',
+          $name_prefix);
+      }
+      $where[] = '('.implode(' OR ', $parts).')';
     }
 
     if ($this->emails !== null) {
@@ -341,6 +356,13 @@ final class PhabricatorPeopleQuery
         $this->nameLike);
     }
 
+    if ($this->isEnrolledInMultiFactor !== null) {
+      $where[] = qsprintf(
+        $conn,
+        'user.isEnrolledInMultiFactor = %d',
+        (int)$this->isEnrolledInMultiFactor);
+    }
+
     return $where;
   }
 
@@ -395,9 +417,16 @@ final class PhabricatorPeopleQuery
     // Group all the events by invited user. Only examine events that users
     // are actually attending.
     $map = array();
+    $invitee_map = array();
     foreach ($events as $event) {
       foreach ($event->getInvitees() as $invitee) {
         if (!$invitee->isAttending()) {
+          continue;
+        }
+
+        // If the user is set to "Available" for this event, don't consider it
+        // when computin their away status.
+        if (!$invitee->getDisplayAvailability($event)) {
           continue;
         }
 
@@ -407,22 +436,41 @@ final class PhabricatorPeopleQuery
         }
 
         $map[$invitee_phid][] = $event;
+
+        $event_phid = $event->getPHID();
+        $invitee_map[$invitee_phid][$event_phid] = $invitee;
       }
     }
+
+    // We need to load these users' timezone settings to figure out their
+    // availability if they're attending all-day events.
+    $this->needUserSettings(true);
+    $this->fillUserCaches($rebuild);
 
     foreach ($rebuild as $phid => $user) {
       $events = idx($map, $phid, array());
 
+      // We loaded events with the omnipotent user, but want to shift them
+      // into the user's timezone before building the cache because they will
+      // be unavailable during their own local day.
+      foreach ($events as $event) {
+        $event->applyViewerTimezone($user);
+      }
+
       $cursor = $min_range;
+      $next_event = null;
       if ($events) {
         // Find the next time when the user has no meetings. If we move forward
         // because of an event, we check again for events after that one ends.
         while (true) {
           foreach ($events as $event) {
-            $from = $event->getDateFromForCache();
-            $to = $event->getDateTo();
+            $from = $event->getStartDateTimeEpochForCache();
+            $to = $event->getEndDateTimeEpochForCache();
             if (($from <= $cursor) && ($to > $cursor)) {
               $cursor = $to;
+              if (!$next_event) {
+                $next_event = $event;
+              }
               continue 2;
             }
           }
@@ -431,15 +479,40 @@ final class PhabricatorPeopleQuery
       }
 
       if ($cursor > $min_range) {
+        $invitee = $invitee_map[$phid][$next_event->getPHID()];
+        $availability_type = $invitee->getDisplayAvailability($next_event);
         $availability = array(
           'until' => $cursor,
+          'eventPHID' => $next_event->getPHID(),
+          'availability' => $availability_type,
         );
-        $availability_ttl = $cursor;
+
+        // We only cache this availability until the end of the current event,
+        // since the event PHID (and possibly the availability type) are only
+        // valid for that long.
+
+        // NOTE: This doesn't handle overlapping events with the greatest
+        // possible care. In theory, if you're attenting multiple events
+        // simultaneously we should accommodate that. However, it's complex
+        // to compute, rare, and probably not confusing most of the time.
+
+        $availability_ttl = $next_event->getEndDateTimeEpochForCache();
       } else {
         $availability = array(
           'until' => null,
+          'eventPHID' => null,
+          'availability' => null,
         );
+
+        // Cache that the user is available until the next event they are
+        // invited to starts.
         $availability_ttl = $max_range;
+        foreach ($events as $event) {
+          $from = $event->getStartDateTimeEpochForCache();
+          if ($from > $cursor) {
+            $availability_ttl = min($from, $availability_ttl);
+          }
+        }
       }
 
       // Never TTL the cache to longer than the maximum range we examined.

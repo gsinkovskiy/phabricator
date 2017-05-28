@@ -10,13 +10,14 @@ final class PhabricatorDashboardPanel
     PhabricatorPolicyInterface,
     PhabricatorCustomFieldInterface,
     PhabricatorFlaggableInterface,
-    PhabricatorProjectInterface,
-    PhabricatorDestructibleInterface {
+    PhabricatorDestructibleInterface,
+    PhabricatorNgramsInterface {
 
   protected $name;
   protected $panelType;
   protected $viewPolicy;
   protected $editPolicy;
+  protected $authorPHID;
   protected $isArchived = 0;
   protected $properties = array();
 
@@ -25,19 +26,9 @@ final class PhabricatorDashboardPanel
   public static function initializeNewPanel(PhabricatorUser $actor) {
     return id(new PhabricatorDashboardPanel())
       ->setName('')
-      ->setViewPolicy(PhabricatorPolicies::POLICY_USER)
+      ->setAuthorPHID($actor->getPHID())
+      ->setViewPolicy(PhabricatorPolicies::getMostOpenPolicy())
       ->setEditPolicy($actor->getPHID());
-  }
-
-  public static function copyPanel(
-    PhabricatorDashboardPanel $dst,
-    PhabricatorDashboardPanel $src) {
-
-    $dst->name = $src->name;
-    $dst->panelType = $src->panelType;
-    $dst->properties = $src->properties;
-
-    return $dst;
   }
 
   protected function getConfiguration() {
@@ -47,8 +38,9 @@ final class PhabricatorDashboardPanel
         'properties' => self::SERIALIZATION_JSON,
       ),
       self::CONFIG_COLUMN_SCHEMA => array(
-        'name' => 'text255',
+        'name' => 'sort255',
         'panelType' => 'text64',
+        'authorPHID' => 'phid',
         'isArchived' => 'bool',
       ),
     ) + parent::getConfiguration();
@@ -70,6 +62,10 @@ final class PhabricatorDashboardPanel
 
   public function getMonogram() {
     return 'W'.$this->getID();
+  }
+
+  public function getURI() {
+    return '/'.$this->getMonogram();
   }
 
   public function getPanelTypes() {
@@ -156,10 +152,6 @@ final class PhabricatorDashboardPanel
     return false;
   }
 
-  public function describeAutomaticCapability($capability) {
-    return null;
-  }
-
 
 /* -(  PhabricatorCustomFieldInterface  )------------------------------------ */
 
@@ -191,6 +183,17 @@ final class PhabricatorDashboardPanel
     $this->openTransaction();
       $this->delete();
     $this->saveTransaction();
+  }
+
+
+/* -(  PhabricatorNgramInterface  )------------------------------------------ */
+
+
+  public function newNgrams() {
+    return array(
+      id(new PhabricatorDashboardPanelNgrams())
+        ->setValue($this->getName()),
+    );
   }
 
 }

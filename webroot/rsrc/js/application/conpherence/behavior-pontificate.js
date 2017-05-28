@@ -10,7 +10,7 @@
 
 JX.behavior('conpherence-pontificate', function() {
 
-  var onsubmit = function(e) {
+  var _sendMessage = function(e) {
     e.kill();
     var form = e.getNode('tag:form');
     var threadManager = JX.ConpherenceThreadManager.getInstance();
@@ -20,6 +20,6 @@ JX.behavior('conpherence-pontificate', function() {
   JX.Stratcom.listen(
     ['submit', 'didSyntheticSubmit'],
     'conpherence-pontificate',
-    onsubmit);
+    _sendMessage);
 
 });

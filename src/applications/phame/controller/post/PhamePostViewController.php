@@ -19,8 +19,10 @@ final class PhamePostViewController
     $is_external = $this->getIsExternal();
 
     $header = id(new PHUIHeaderView())
-      ->setHeader($post->getTitle())
+      ->addClass('phame-header-bar')
       ->setUser($viewer);
+
+    $hero = $this->buildPhamePostHeader($post);
 
     if (!$is_external) {
       $actions = $this->renderActions($post);
@@ -123,18 +125,21 @@ final class PhamePostViewController
       ->setImage($blogger->getProfileImageURI())
       ->setImageHref($author_uri);
 
+    $monogram = $post->getMonogram();
     $timeline = $this->buildTransactionTimeline(
       $post,
       id(new PhamePostTransactionQuery())
       ->withTransactionTypes(array(PhabricatorTransactions::TYPE_COMMENT)));
-    $timeline = phutil_tag_div('phui-document-view-pro-box', $timeline);
+    $timeline->setQuoteRef($monogram);
 
     if ($is_external) {
       $add_comment = null;
     } else {
-      $add_comment = $this->buildCommentForm($post);
-      $add_comment = phutil_tag_div('mlb mlt', $add_comment);
+      $add_comment = $this->buildCommentForm($post, $timeline);
+      $add_comment = phutil_tag_div('mlb mlt phame-comment-view', $add_comment);
     }
+
+    $timeline = phutil_tag_div('phui-document-view-pro-box', $timeline);
 
     list($prev, $next) = $this->loadAdjacentPosts($post);
 
@@ -164,6 +169,7 @@ final class PhamePostViewController
       ->setCrumbs($crumbs)
       ->appendChild(
         array(
+          $hero,
           $document,
           $about,
           $properties,
@@ -199,6 +205,13 @@ final class PhamePostViewController
         ->setIcon('fa-pencil')
         ->setHref($this->getApplicationURI('post/edit/'.$id.'/'))
         ->setName(pht('Edit Post'))
+        ->setDisabled(!$can_edit));
+
+    $actions->addAction(
+      id(new PhabricatorActionView())
+        ->setIcon('fa-camera-retro')
+        ->setHref($this->getApplicationURI('post/header/'.$id.'/'))
+        ->setName(pht('Edit Header Image'))
         ->setDisabled(!$can_edit));
 
     $actions->addAction(
@@ -273,19 +286,13 @@ final class PhamePostViewController
     return $actions;
   }
 
-  private function buildCommentForm(PhamePost $post) {
+  private function buildCommentForm(PhamePost $post, $timeline) {
     $viewer = $this->getViewer();
 
-    $draft = PhabricatorDraft::newFromUserAndKey(
-      $viewer, $post->getPHID());
-
-    $box = id(new PhabricatorApplicationTransactionCommentView())
-      ->setUser($viewer)
-      ->setObjectPHID($post->getPHID())
-      ->setDraft($draft)
-      ->setHeaderText(pht('Add Comment'))
-      ->setAction($this->getApplicationURI('post/comment/'.$post->getID().'/'))
-      ->setSubmitButtonName(pht('Add Comment'));
+    $box = id(new PhamePostEditEngine())
+      ->setViewer($viewer)
+      ->buildEditEngineCommentView($post)
+      ->setTransactionTimeline($timeline);
 
     return phutil_tag_div('phui-document-view-pro-box', $box);
   }
@@ -308,6 +315,35 @@ final class PhamePostViewController
       ->execute();
 
     return array(head($prev), head($next));
+  }
+
+  private function buildPhamePostHeader(
+    PhamePost $post) {
+
+    $image = null;
+    if ($post->getHeaderImagePHID()) {
+      $image = phutil_tag(
+        'div',
+        array(
+          'class' => 'phame-header-hero',
+        ),
+        phutil_tag(
+          'img',
+          array(
+            'src'     => $post->getHeaderImageURI(),
+            'class'   => 'phame-header-image',
+          )));
+    }
+
+    $title = phutil_tag_div('phame-header-title', $post->getTitle());
+    $subtitle = null;
+    if ($post->getSubtitle()) {
+      $subtitle = phutil_tag_div('phame-header-subtitle', $post->getSubtitle());
+    }
+
+    return phutil_tag_div(
+      'phame-mega-header', array($image, $title, $subtitle));
+
   }
 
 }

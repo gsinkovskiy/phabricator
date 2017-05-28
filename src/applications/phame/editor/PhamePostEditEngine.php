@@ -68,6 +68,10 @@ final class PhamePostEditEngine
     return $object->getViewURI();
   }
 
+  protected function getEditorURI() {
+    return $this->getApplication()->getApplicationURI('post/edit/');
+  }
+
   protected function buildCustomEditFields($object) {
     $blog_phid = $object->getBlog()->getPHID();
 
@@ -80,7 +84,7 @@ final class PhamePostEditEngine
           pht('Choose a blog to create a post on (or move a post to).'))
         ->setConduitTypeDescription(pht('PHID of the blog.'))
         ->setAliases(array('blogPHID'))
-        ->setTransactionType(PhamePostTransaction::TYPE_BLOG)
+        ->setTransactionType(PhamePostBlogTransaction::TRANSACTIONTYPE)
         ->setHandleParameterType(new AphrontPHIDListHTTPParameterType())
         ->setSingleValue($blog_phid)
         ->setIsReorderable(false)
@@ -93,15 +97,24 @@ final class PhamePostEditEngine
         ->setDescription(pht('Post title.'))
         ->setConduitDescription(pht('Retitle the post.'))
         ->setConduitTypeDescription(pht('New post title.'))
-        ->setTransactionType(PhamePostTransaction::TYPE_TITLE)
+        ->setTransactionType(PhamePostTitleTransaction::TRANSACTIONTYPE)
+        ->setIsRequired(true)
         ->setValue($object->getTitle()),
+      id(new PhabricatorTextEditField())
+        ->setKey('subtitle')
+        ->setLabel(pht('Subtitle'))
+        ->setDescription(pht('Post subtitle.'))
+        ->setConduitDescription(pht('Change the post subtitle.'))
+        ->setConduitTypeDescription(pht('New post subtitle.'))
+        ->setTransactionType(PhamePostSubtitleTransaction::TRANSACTIONTYPE)
+        ->setValue($object->getSubtitle()),
       id(new PhabricatorSelectEditField())
         ->setKey('visibility')
         ->setLabel(pht('Visibility'))
         ->setDescription(pht('Post visibility.'))
         ->setConduitDescription(pht('Change post visibility.'))
         ->setConduitTypeDescription(pht('New post visibility constant.'))
-        ->setTransactionType(PhamePostTransaction::TYPE_VISIBILITY)
+        ->setTransactionType(PhamePostVisibilityTransaction::TRANSACTIONTYPE)
         ->setValue($object->getVisibility())
         ->setOptions(PhameConstants::getPhamePostStatusMap()),
       id(new PhabricatorRemarkupEditField())
@@ -110,7 +123,7 @@ final class PhamePostEditEngine
         ->setDescription(pht('Post body.'))
         ->setConduitDescription(pht('Change post body.'))
         ->setConduitTypeDescription(pht('New post body.'))
-        ->setTransactionType(PhamePostTransaction::TYPE_BODY)
+        ->setTransactionType(PhamePostBodyTransaction::TRANSACTIONTYPE)
         ->setValue($object->getBody())
         ->setPreviewPanel(
           id(new PHUIRemarkupPreviewPanel())

@@ -43,6 +43,10 @@ final class NuanceQueue
     return '/nuance/queue/view/'.$this->getID().'/';
   }
 
+  public function getWorkURI() {
+    return '/nuance/queue/work/'.$this->getID().'/';
+  }
+
 
 /* -(  PhabricatorPolicyInterface  )----------------------------------------- */
 
@@ -65,10 +69,6 @@ final class NuanceQueue
 
   public function hasAutomaticCapability($capability, PhabricatorUser $viewer) {
     return false;
-  }
-
-  public function describeAutomaticCapability($capability) {
-    return null;
   }
 
 

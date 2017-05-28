@@ -19,6 +19,7 @@ final class PhamePost extends PhameDAO
 
   protected $bloggerPHID;
   protected $title;
+  protected $subtitle;
   protected $phameTitle;
   protected $body;
   protected $visibility;
@@ -26,8 +27,10 @@ final class PhamePost extends PhameDAO
   protected $datePublished;
   protected $blogPHID;
   protected $mailKey;
+  protected $headerImagePHID;
 
   private $blog = self::ATTACHABLE;
+  private $headerImageFile = self::ATTACHABLE;
 
   public static function initializePost(
     PhabricatorUser $blogger,
@@ -50,6 +53,10 @@ final class PhamePost extends PhameDAO
 
   public function getBlog() {
     return $this->assertAttached($this->blog);
+  }
+
+  public function getMonogram() {
+    return 'J'.$this->getID();
   }
 
   public function getLiveURI() {
@@ -119,9 +126,11 @@ final class PhamePost extends PhameDAO
       ),
       self::CONFIG_COLUMN_SCHEMA => array(
         'title' => 'text255',
+        'subtitle' => 'text64',
         'phameTitle' => 'sort64?',
         'visibility' => 'uint32',
         'mailKey' => 'bytes20',
+        'headerImagePHID' => 'phid?',
 
         // T6203/NULLABILITY
         // These seem like they should always be non-null?
@@ -164,7 +173,20 @@ final class PhamePost extends PhameDAO
   }
 
   public function getSlug() {
-    return PhabricatorSlug::normalizeProjectSlug($this->getTitle(), true);
+    return PhabricatorSlug::normalizeProjectSlug($this->getTitle());
+  }
+
+  public function getHeaderImageURI() {
+    return $this->getHeaderImageFile()->getBestURI();
+  }
+
+  public function attachHeaderImageFile(PhabricatorFile $file) {
+    $this->headerImageFile = $file;
+    return $this;
+  }
+
+  public function getHeaderImageFile() {
+    return $this->assertAttached($this->headerImageFile);
   }
 
 
@@ -220,8 +242,8 @@ final class PhamePost extends PhameDAO
 
 
   public function getMarkupFieldKey($field) {
-    $hash = PhabricatorHash::digest($this->getMarkupText($field));
-    return $this->getPHID().':'.$field.':'.$hash;
+    $content = $this->getMarkupText($field);
+    return PhabricatorMarkupEngine::digestRemarkupContent($this, $content);
   }
 
   public function newMarkupEngine($field) {

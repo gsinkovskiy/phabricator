@@ -607,7 +607,9 @@ final class DiffusionServeController extends DiffusionController {
     $request = $this->getRequest();
     $request_path = $request->getRequestURI()->getPath();
 
-    $info = PhabricatorRepository::parseRepositoryServicePath($request_path);
+    $info = PhabricatorRepository::parseRepositoryServicePath(
+      $request_path,
+      $repository->getVersionControlSystem());
     $base_path = $info['path'];
 
     // For Git repositories, strip an optional directory component if it
@@ -650,7 +652,7 @@ final class DiffusionServeController extends DiffusionController {
     }
 
     $lfs_pass = $password->openEnvelope();
-    $lfs_hash = PhabricatorHash::digest($lfs_pass);
+    $lfs_hash = PhabricatorHash::weakDigest($lfs_pass);
 
     $token = id(new PhabricatorAuthTemporaryTokenQuery())
       ->setViewer(PhabricatorUser::getOmnipotentUser())

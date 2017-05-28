@@ -17,9 +17,12 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
   private $dateCreatedBefore;
   private $dateModifiedAfter;
   private $dateModifiedBefore;
-  private $subpriorityMin;
-  private $subpriorityMax;
   private $bridgedObjectPHIDs;
+  private $hasOpenParents;
+  private $hasOpenSubtasks;
+  private $parentTaskIDs;
+  private $subtaskIDs;
+  private $subtypes;
 
   private $fullTextSearch   = '';
 
@@ -51,8 +54,6 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
 
   private $needSubscriberPHIDs;
   private $needProjectPHIDs;
-  private $blockingTasks;
-  private $blockedTasks;
 
   public function withAuthors(array $authors) {
     $this->authorPHIDs = $authors;
@@ -109,12 +110,6 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
     return $this;
   }
 
-  public function withSubpriorityBetween($min, $max) {
-    $this->subpriorityMin = $min;
-    $this->subpriorityMax = $max;
-    return $this;
-  }
-
   public function withSubscribers(array $subscribers) {
     $this->subscriberPHIDs = $subscribers;
     return $this;
@@ -151,32 +146,24 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
     return $this;
   }
 
-  /**
-   * True returns tasks that are blocking other tasks only.
-   * False returns tasks that are not blocking other tasks only.
-   * Null returns tasks regardless of blocking status.
-   */
-  public function withBlockingTasks($mode) {
-    $this->blockingTasks = $mode;
+  public function withOpenSubtasks($value) {
+    $this->hasOpenSubtasks = $value;
     return $this;
   }
 
-  public function shouldJoinBlockingTasks() {
-    return $this->blockingTasks !== null;
-  }
-
-  /**
-   * True returns tasks that are blocked by other tasks only.
-   * False returns tasks that are not blocked by other tasks only.
-   * Null returns tasks regardless of blocked by status.
-   */
-  public function withBlockedTasks($mode) {
-    $this->blockedTasks = $mode;
+  public function withOpenParents($value) {
+    $this->hasOpenParents = $value;
     return $this;
   }
 
-  public function shouldJoinBlockedTasks() {
-    return $this->blockedTasks !== null;
+  public function withParentTaskIDs(array $ids) {
+    $this->parentTaskIDs = $ids;
+    return $this;
+  }
+
+  public function withSubtaskIDs(array $ids) {
+    $this->subtaskIDs = $ids;
+    return $this;
   }
 
   public function withDateCreatedBefore($date_created_before) {
@@ -211,6 +198,11 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
 
   public function withBridgedObjectPHIDs(array $phids) {
     $this->bridgedObjectPHIDs = $phids;
+    return $this;
+  }
+
+  public function withSubtypes(array $subtypes) {
+    $this->subtypes = $subtypes;
     return $this;
   }
 
@@ -335,7 +327,6 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
     $where = parent::buildWhereClauseParts($conn);
 
     $where[] = $this->buildStatusWhereClause($conn);
-    $where[] = $this->buildDependenciesWhereClause($conn);
     $where[] = $this->buildOwnerWhereClause($conn);
     $where[] = $this->buildFullTextWhereClause($conn);
 
@@ -409,25 +400,18 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
         $this->subpriorities);
     }
 
-    if ($this->subpriorityMin !== null) {
-      $where[] = qsprintf(
-        $conn,
-        'task.subpriority >= %f',
-        $this->subpriorityMin);
-    }
-
-    if ($this->subpriorityMax !== null) {
-      $where[] = qsprintf(
-        $conn,
-        'task.subpriority <= %f',
-        $this->subpriorityMax);
-    }
-
     if ($this->bridgedObjectPHIDs !== null) {
       $where[] = qsprintf(
         $conn,
         'task.bridgedObjectPHID IN (%Ls)',
         $this->bridgedObjectPHIDs);
+    }
+
+    if ($this->subtypes !== null) {
+      $where[] = qsprintf(
+        $conn,
+        'task.subtype IN (%Ls)',
+        $this->subtypes);
     }
 
     return $where;
@@ -507,14 +491,14 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
       ->setEngineClassName('PhabricatorSearchApplicationSearchEngine')
       ->setParameter('query', $this->fullTextSearch);
 
-    // NOTE: Setting this to something larger than 2^53 will raise errors in
-    // ElasticSearch, and billions of results won't fit in memory anyway.
-    $fulltext_query->setParameter('limit', 100000);
+    // NOTE: Setting this to something larger than 10,000 will raise errors in
+    // Elasticsearch, and billions of results won't fit in memory anyway.
+    $fulltext_query->setParameter('limit', 10000);
     $fulltext_query->setParameter('types',
       array(ManiphestTaskPHIDType::TYPECONST));
 
-    $engine = PhabricatorFulltextStorageEngine::loadEngine();
-    $fulltext_results = $engine->executeSearch($fulltext_query);
+    $fulltext_results = PhabricatorSearchService::executeSearch(
+      $fulltext_query);
 
     if (empty($fulltext_results)) {
       $fulltext_results = array(null);
@@ -526,71 +510,64 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
       $fulltext_results);
   }
 
-  private function buildDependenciesWhereClause(
-    AphrontDatabaseConnection $conn) {
-
-    if (!$this->shouldJoinBlockedTasks() &&
-        !$this->shouldJoinBlockingTasks()) {
-      return null;
-    }
-
-    $parts = array();
-    if ($this->blockingTasks === true) {
-      $parts[] = qsprintf(
-        $conn,
-        'blocking.dst IS NOT NULL AND blockingtask.status IN (%Ls)',
-        ManiphestTaskStatus::getOpenStatusConstants());
-    } else if ($this->blockingTasks === false) {
-      $parts[] = qsprintf(
-        $conn,
-        'blocking.dst IS NULL OR blockingtask.status NOT IN (%Ls)',
-        ManiphestTaskStatus::getOpenStatusConstants());
-    }
-
-    if ($this->blockedTasks === true) {
-      $parts[] = qsprintf(
-        $conn,
-        'blocked.dst IS NOT NULL AND blockedtask.status IN (%Ls)',
-        ManiphestTaskStatus::getOpenStatusConstants());
-    } else if ($this->blockedTasks === false) {
-      $parts[] = qsprintf(
-        $conn,
-        'blocked.dst IS NULL OR blockedtask.status NOT IN (%Ls)',
-        ManiphestTaskStatus::getOpenStatusConstants());
-    }
-
-    return '('.implode(') OR (', $parts).')';
-  }
-
-  protected function buildJoinClauseParts(AphrontDatabaseConnection $conn_r) {
+  protected function buildJoinClauseParts(AphrontDatabaseConnection $conn) {
+    $open_statuses = ManiphestTaskStatus::getOpenStatusConstants();
     $edge_table = PhabricatorEdgeConfig::TABLE_NAME_EDGE;
+    $task_table = $this->newResultObject()->getTableName();
+
+    $parent_type = ManiphestTaskDependedOnByTaskEdgeType::EDGECONST;
+    $subtask_type = ManiphestTaskDependsOnTaskEdgeType::EDGECONST;
 
     $joins = array();
+    if ($this->hasOpenParents !== null) {
+      if ($this->hasOpenParents) {
+        $join_type = 'JOIN';
+      } else {
+        $join_type = 'LEFT JOIN';
+      }
 
-    if ($this->shouldJoinBlockingTasks()) {
       $joins[] = qsprintf(
-        $conn_r,
-        'LEFT JOIN %T blocking ON blocking.src = task.phid '.
-        'AND blocking.type = %d '.
-        'LEFT JOIN %T blockingtask ON blocking.dst = blockingtask.phid',
+        $conn,
+        '%Q %T e_parent
+          ON e_parent.src = task.phid
+          AND e_parent.type = %d
+         %Q %T parent
+           ON e_parent.dst = parent.phid
+           AND parent.status IN (%Ls)',
+        $join_type,
         $edge_table,
-        ManiphestTaskDependedOnByTaskEdgeType::EDGECONST,
-        id(new ManiphestTask())->getTableName());
+        $parent_type,
+        $join_type,
+        $task_table,
+        $open_statuses);
     }
-    if ($this->shouldJoinBlockedTasks()) {
+
+    if ($this->hasOpenSubtasks !== null) {
+      if ($this->hasOpenSubtasks) {
+        $join_type = 'JOIN';
+      } else {
+        $join_type = 'LEFT JOIN';
+      }
+
       $joins[] = qsprintf(
-        $conn_r,
-        'LEFT JOIN %T blocked ON blocked.src = task.phid '.
-        'AND blocked.type = %d '.
-        'LEFT JOIN %T blockedtask ON blocked.dst = blockedtask.phid',
+        $conn,
+        '%Q %T e_subtask
+          ON e_subtask.src = task.phid
+          AND e_subtask.type = %d
+         %Q %T subtask
+           ON e_subtask.dst = subtask.phid
+           AND subtask.status IN (%Ls)',
+        $join_type,
         $edge_table,
-        ManiphestTaskDependsOnTaskEdgeType::EDGECONST,
-        id(new ManiphestTask())->getTableName());
+        $subtask_type,
+        $join_type,
+        $task_table,
+        $open_statuses);
     }
 
     if ($this->subscriberPHIDs !== null) {
       $joins[] = qsprintf(
-        $conn_r,
+        $conn,
         'JOIN %T e_ccs ON e_ccs.src = task.phid '.
         'AND e_ccs.type = %s '.
         'AND e_ccs.dst in (%Ls)',
@@ -604,7 +581,7 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
         $ignore_group_phids = $this->getIgnoreGroupedProjectPHIDs();
         if ($ignore_group_phids) {
           $joins[] = qsprintf(
-            $conn_r,
+            $conn,
             'LEFT JOIN %T projectGroup ON task.phid = projectGroup.src
               AND projectGroup.type = %d
               AND projectGroup.dst NOT IN (%Ls)',
@@ -613,29 +590,62 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
             $ignore_group_phids);
         } else {
           $joins[] = qsprintf(
-            $conn_r,
+            $conn,
             'LEFT JOIN %T projectGroup ON task.phid = projectGroup.src
               AND projectGroup.type = %d',
             $edge_table,
             PhabricatorProjectObjectHasProjectEdgeType::EDGECONST);
         }
         $joins[] = qsprintf(
-          $conn_r,
+          $conn,
           'LEFT JOIN %T projectGroupName
             ON projectGroup.dst = projectGroupName.indexedObjectPHID',
           id(new ManiphestNameIndex())->getTableName());
         break;
     }
 
-    $joins[] = parent::buildJoinClauseParts($conn_r);
+    if ($this->parentTaskIDs !== null) {
+      $joins[] = qsprintf(
+        $conn,
+        'JOIN %T e_has_parent
+          ON e_has_parent.src = task.phid
+          AND e_has_parent.type = %d
+         JOIN %T has_parent
+           ON e_has_parent.dst = has_parent.phid
+           AND has_parent.id IN (%Ld)',
+        $edge_table,
+        $parent_type,
+        $task_table,
+        $this->parentTaskIDs);
+    }
+
+    if ($this->subtaskIDs !== null) {
+      $joins[] = qsprintf(
+        $conn,
+        'JOIN %T e_has_subtask
+          ON e_has_subtask.src = task.phid
+          AND e_has_subtask.type = %d
+         JOIN %T has_subtask
+           ON e_has_subtask.dst = has_subtask.phid
+           AND has_subtask.id IN (%Ld)',
+        $edge_table,
+        $subtask_type,
+        $task_table,
+        $this->subtaskIDs);
+    }
+
+    $joins[] = parent::buildJoinClauseParts($conn);
 
     return $joins;
   }
 
   protected function buildGroupClause(AphrontDatabaseConnection $conn_r) {
-    $joined_multiple_rows = $this->shouldJoinBlockingTasks() ||
-                            $this->shouldJoinBlockedTasks() ||
-                            ($this->shouldGroupQueryResultRows());
+    $joined_multiple_rows =
+      ($this->hasOpenParents !== null) ||
+      ($this->hasOpenSubtasks !== null) ||
+      ($this->parentTaskIDs !== null) ||
+      ($this->subtaskIDs !== null) ||
+      $this->shouldGroupQueryResultRows();
 
     $joined_project_name = ($this->groupBy == self::GROUP_PROJECT);
 
@@ -651,6 +661,30 @@ final class ManiphestTaskQuery extends PhabricatorCursorPagedPolicyAwareQuery {
       return '';
     }
   }
+
+
+  protected function buildHavingClauseParts(AphrontDatabaseConnection $conn) {
+    $having = parent::buildHavingClauseParts($conn);
+
+    if ($this->hasOpenParents !== null) {
+      if (!$this->hasOpenParents) {
+        $having[] = qsprintf(
+          $conn,
+          'COUNT(parent.phid) = 0');
+      }
+    }
+
+    if ($this->hasOpenSubtasks !== null) {
+      if (!$this->hasOpenSubtasks) {
+        $having[] = qsprintf(
+          $conn,
+          'COUNT(subtask.phid) = 0');
+      }
+    }
+
+    return $having;
+  }
+
 
   /**
    * Return project PHIDs which we should ignore when grouping tasks by

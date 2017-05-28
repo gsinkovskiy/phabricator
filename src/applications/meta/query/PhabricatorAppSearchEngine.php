@@ -201,7 +201,7 @@ final class PhabricatorAppSearchEngine
         $results[] = phutil_tag(
           'h1',
           array(
-            'class' => 'phui-object-item-list-header',
+            'class' => 'phui-oi-list-header',
           ),
           idx($group_names, $group, $group));
       }
@@ -214,36 +214,43 @@ final class PhabricatorAppSearchEngine
           $icon = 'application';
         }
 
-        // TODO: This sheet doesn't work the same way other sheets do so it
-        // ends up with the wrong classes if we try to use PHUIIconView. This
-        // is probably all changing in the redesign anyway.
-
-        $icon_view = javelin_tag(
-          'span',
-          array(
-            'class' => 'phui-icon-view phui-font-fa '.$icon,
-            'aural' => false,
-          ),
-          '');
-
         $description = $application->getShortDescription();
 
         $configure = id(new PHUIButtonView())
           ->setTag('a')
+          ->setIcon('fa-gears')
           ->setHref('/applications/view/'.get_class($application).'/')
           ->setText(pht('Configure'))
           ->setColor(PHUIButtonView::GREY);
 
         $name = $application->getName();
-        if ($application->isPrototype()) {
-          $name = $name.' '.pht('(Prototype)');
-        }
 
         $item = id(new PHUIObjectItemView())
           ->setHeader($name)
-          ->setImageIcon($icon_view)
-          ->setSubhead($description)
-          ->setLaunchButton($configure);
+          ->setImageIcon($icon)
+          ->setSideColumn($configure);
+
+        if (!$application->isFirstParty()) {
+          $tag = id(new PHUITagView())
+            ->setName(pht('Extension'))
+            ->setIcon('fa-puzzle-piece')
+            ->setColor(PHUITagView::COLOR_BLUE)
+            ->setType(PHUITagView::TYPE_SHADE)
+            ->setSlimShady(true);
+          $item->addAttribute($tag);
+        }
+
+        if ($application->isPrototype()) {
+          $prototype_tag = id(new PHUITagView())
+            ->setName(pht('Prototype'))
+            ->setIcon('fa-exclamation-circle')
+            ->setColor(PHUITagView::COLOR_ORANGE)
+            ->setType(PHUITagView::TYPE_SHADE)
+            ->setSlimShady(true);
+          $item->addAttribute($prototype_tag);
+        }
+
+        $item->addAttribute($description);
 
         if ($application->getBaseURI() && $application->isInstalled()) {
           $item->setHref($application->getBaseURI());
@@ -252,10 +259,6 @@ final class PhabricatorAppSearchEngine
         if (!$application->isInstalled()) {
           $item->addAttribute(pht('Uninstalled'));
           $item->setDisabled(true);
-        }
-
-        if (!$application->isFirstParty()) {
-          $item->addAttribute(pht('Extension'));
         }
 
         $list->addItem($item);

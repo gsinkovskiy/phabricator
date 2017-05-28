@@ -36,9 +36,7 @@ final class ConpherenceQueryThreadConduitAPIMethod
     $offset = $request->getValue('offset');
 
     $query = id(new ConpherenceThreadQuery())
-      ->setViewer($user)
-      ->needParticipantCache(true)
-      ->needFilePHIDs(true);
+      ->setViewer($user);
 
     if ($ids) {
       $conpherences = $query
@@ -58,7 +56,7 @@ final class ConpherenceQueryThreadConduitAPIMethod
         ->setLimit($limit)
         ->setOffset($offset)
         ->execute();
-      $conpherence_phids = array_keys($participation);
+      $conpherence_phids = mpull($participation, 'getConpherencePHID');
       $query->withPHIDs($conpherence_phids);
       $conpherences = $query->execute();
       $conpherences = array_select_keys($conpherences, $conpherence_phids);
@@ -72,8 +70,6 @@ final class ConpherenceQueryThreadConduitAPIMethod
         'conpherencePHID' => $conpherence->getPHID(),
         'conpherenceTitle' => $conpherence->getTitle(),
         'messageCount' => $conpherence->getMessageCount(),
-        'recentParticipantPHIDs' => $conpherence->getRecentParticipantPHIDs(),
-        'filePHIDs' => $conpherence->getFilePHIDs(),
         'conpherenceURI' => $this->getConpherenceURI($conpherence),
       );
     }

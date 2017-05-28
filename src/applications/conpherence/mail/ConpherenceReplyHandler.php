@@ -34,14 +34,8 @@ final class ConpherenceReplyHandler extends PhabricatorMailReplyHandler {
     $user = $this->getActor();
     if (!$conpherence->getPHID()) {
       $conpherence
-        ->attachParticipants(array())
-        ->attachFilePHIDs(array());
+        ->attachParticipants(array());
     } else {
-      $edge_type = PhabricatorObjectHasFileEdgeType::EDGECONST;
-      $file_phids = PhabricatorEdgeQuery::loadDestinationPHIDs(
-        $conpherence->getPHID(),
-        $edge_type);
-      $conpherence->attachFilePHIDs($file_phids);
       $participants = id(new ConpherenceParticipant())
         ->loadAllWhere('conpherencePHID = %s', $conpherence->getPHID());
       $participants = mpull($participants, null, 'getParticipantPHID');
@@ -61,7 +55,8 @@ final class ConpherenceReplyHandler extends PhabricatorMailReplyHandler {
     $xactions = array();
     if ($this->getMailAddedParticipantPHIDs()) {
       $xactions[] = id(new ConpherenceTransaction())
-        ->setTransactionType(ConpherenceTransaction::TYPE_PARTICIPANTS)
+        ->setTransactionType(
+          ConpherenceThreadParticipantsTransaction::TRANSACTIONTYPE)
         ->setNewValue(array('+' => $this->getMailAddedParticipantPHIDs()));
     }
 

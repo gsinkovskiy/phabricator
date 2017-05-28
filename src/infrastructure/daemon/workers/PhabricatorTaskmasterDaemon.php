@@ -23,9 +23,11 @@ final class PhabricatorTaskmasterDaemon extends PhabricatorDaemon {
           $ex = $task->getExecutionException();
           if ($ex) {
             if ($ex instanceof PhabricatorWorkerPermanentFailureException) {
-              throw new PhutilProxyException(
-                pht('Permanent failure while executing Task ID %d.', $id),
-                $ex);
+              $this->log(
+                pht(
+                  'Task %d was cancelled: %s',
+                  $id,
+                  $ex->getMessage()));
             } else if ($ex instanceof PhabricatorWorkerYieldException) {
               $this->log(pht('Task %s yielded.', $id));
             } else {
@@ -41,6 +43,14 @@ final class PhabricatorTaskmasterDaemon extends PhabricatorDaemon {
 
         $sleep = 0;
       } else {
+
+        if ($this->getIdleDuration() > 15) {
+          $hibernate_duration = phutil_units('3 minutes in seconds');
+          if ($this->shouldHibernate($hibernate_duration)) {
+            break;
+          }
+        }
+
         // When there's no work, sleep for one second. The pool will
         // autoscale down if we're continuously idle for an extended period
         // of time.

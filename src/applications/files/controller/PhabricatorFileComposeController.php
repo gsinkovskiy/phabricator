@@ -35,7 +35,7 @@ final class PhabricatorFileComposeController
 
       $data = $composer->loadBuiltinFileData();
 
-      $file = PhabricatorFile::buildFromFileDataOrHash(
+      $file = PhabricatorFile::newFromFileData(
         $data,
         array(
           'name' => $composer->getBuiltinDisplayName(),
@@ -48,7 +48,8 @@ final class PhabricatorFileComposeController
 
         $xactions = array();
         $xactions[] = id(new PhabricatorProjectTransaction())
-          ->setTransactionType(PhabricatorProjectTransaction::TYPE_IMAGE)
+          ->setTransactionType(
+              PhabricatorProjectImageTransaction::TRANSACTIONTYPE)
           ->setNewValue($file->getPHID());
 
         $editor = id(new PhabricatorProjectTransactionEditor())
