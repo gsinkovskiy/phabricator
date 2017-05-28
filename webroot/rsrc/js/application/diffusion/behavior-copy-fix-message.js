@@ -13,7 +13,7 @@ JX.behavior('diffusion-copy-fix-message', function(config) {
       copy_link = JX.DOM.scry(document.body, 'a', sigil).pop();
 
   ZeroClipboard.config({
-    hoverClass: 'phabricator-action-view-hover'
+    hoverClass: 'phabricator-action-view-href-hover'
   });
 
   zc_client = new ZeroClipboard(copy_link.parentElement);
