@@ -86,8 +86,11 @@ final class AphrontFormCheckboxControl extends AphrontFormControl {
 
   public function setValue($value) {
     if (!is_array($value)) {
-      $error_msg = 'Value must be associative array of selected checkboxes';
-      throw new Exception($error_msg);
+      // To compensate for "PhabricatorBoolEditField" field in checkbox mode.
+      $value = array($this->boxes[0]['name'] => $value);
+
+      //$error_msg = 'Value must be associative array of selected checkboxes';
+      //throw new Exception($error_msg);
     }
 
     return parent::setValue($value);
