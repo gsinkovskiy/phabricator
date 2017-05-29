@@ -165,7 +165,7 @@ final class DiffusionJenkinsHookAPIMethod
   }
 
   private function getCommitFiles(DiffusionRequest $drequest) {
-    $raw_diff = DiffusionQuery::callConduitWithDiffusionRequest(
+    $diff_info = DiffusionQuery::callConduitWithDiffusionRequest(
       $drequest->getUser(),
       $drequest,
       'diffusion.rawdiffquery',
@@ -173,6 +173,22 @@ final class DiffusionJenkinsHookAPIMethod
         'path' => $drequest->getRepository()->isSVN() ? '/' : '.',
         'commit' => $drequest->getCommit(),
       ));
+
+    $file_phid = $diff_info['filePHID'];
+    $diff_file = id(new PhabricatorFileQuery())
+     ->setViewer($drequest->getUser())
+     ->withPHIDs(array($file_phid))
+     ->executeOne();
+
+    if (!$diff_file) {
+     throw new Exception(
+       pht(
+         'Failed to load file ("%s") returned by "%s".',
+         $file_phid,
+         'diffusion.rawdiffquery'));
+    }
+
+    $raw_diff = $diff_file->loadFileData();
 
     /** @var ArcanistDiffChange[] $changes */
     $parser = new ArcanistDiffParser();
@@ -244,12 +260,17 @@ final class DiffusionJenkinsHookAPIMethod
     $message,
     $silent = false) {
 
+    // TODO: Implement "$silent" support.
     $conduit_call = new ConduitCall(
-      'diffusion.createcomment',
+      'diffusion.commit.edit',
       array(
-        'phid' => $commit->getPHID(),
-        'message' => $message,
-        'silent' => $silent,
+        'transactions' => array(
+        	array(
+            'type' => 'comment',
+            'value' => $message,
+          ),
+        ),
+        'objectIdentifier' => $commit->getPHID(),
       ));
 
     $conduit_call
