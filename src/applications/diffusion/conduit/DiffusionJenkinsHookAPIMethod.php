@@ -260,7 +260,6 @@ final class DiffusionJenkinsHookAPIMethod
     $message,
     $silent = false) {
 
-    // TODO: Implement "$silent" support.
     $conduit_call = new ConduitCall(
       'diffusion.commit.edit',
       array(
@@ -268,6 +267,7 @@ final class DiffusionJenkinsHookAPIMethod
         	array(
             'type' => 'comment',
             'value' => $message,
+            'silent' => $silent,
           ),
         ),
         'objectIdentifier' => $commit->getPHID(),
