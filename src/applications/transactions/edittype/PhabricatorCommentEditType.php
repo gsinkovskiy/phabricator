@@ -16,6 +16,10 @@ final class PhabricatorCommentEditType extends PhabricatorEditType {
     $xaction = $this->newTransaction($template)
       ->attachComment($comment);
 
+    if (isset($spec['silent'])) {
+      $xaction->setMetadataValue('silent', $spec['silent']);
+    }
+
     return array($xaction);
   }
 

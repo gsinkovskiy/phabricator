@@ -1147,7 +1147,7 @@ abstract class PhabricatorApplicationTransactionEditor
     // Editors need to pass into workers.
     $object = $this->willPublish($object, $xactions);
 
-    if (!$this->getDisableEmail()) {
+    if (!$this->getDisableEmail() && !$this->forceDisableEmail($xactions)) {
       if ($this->shouldSendMail($object, $xactions)) {
         $this->mailToPHIDs = $this->getMailTo($object);
         $this->mailCCPHIDs = $this->getMailCC($object);
@@ -1175,6 +1175,22 @@ abstract class PhabricatorApplicationTransactionEditor
     return $xactions;
   }
 
+  /**
+   * Determines if any of transactions disabled email sending.
+   *
+   * @param PhabricatorApplicationTransaction[] $xactions Transactions.
+   * @return bool
+   */
+  protected function forceDisableEmail(array $xactions) {
+    foreach ($xactions as $xaction) {
+      if ($xaction->getMetadataValue('silent')) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
   protected function didCatchDuplicateKeyException(
     PhabricatorLiskDAO $object,
     array $xactions,
@@ -1196,7 +1212,7 @@ abstract class PhabricatorApplicationTransactionEditor
     $this->object = $object;
 
     $messages = array();
-    if (!$this->getDisableEmail()) {
+    if (!$this->getDisableEmail() && !$this->forceDisableEmail($xactions)) {
       if ($this->shouldSendMail($object, $xactions)) {
         $messages = $this->buildMail($object, $xactions);
       }
