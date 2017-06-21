@@ -25,6 +25,7 @@ final class DiffusionCommitQuery
 
   private $needCommitData;
   private $needDrafts;
+  private $needFlags;
 
   public function withIDs(array $ids) {
     $this->ids = $ids;
@@ -98,6 +99,11 @@ final class DiffusionCommitQuery
 
   public function needCommitData($need) {
     $this->needCommitData = $need;
+    return $this;
+  }
+
+  public function needFlags($need_flags) {
+    $this->needFlags = $need_flags;
     return $this;
   }
 
@@ -277,6 +283,20 @@ final class DiffusionCommitQuery
         foreach ($audit_requests as $audit_request) {
           $audit_request->attachCommit($commit);
         }
+      }
+    }
+
+    if ($this->needFlags) {
+      $flags = id(new PhabricatorFlagQuery())
+        ->setViewer($viewer)
+        ->withOwnerPHIDs(array($viewer->getPHID()))
+        ->withObjectPHIDs(mpull($commits, 'getPHID'))
+        ->execute();
+      $flags = mpull($flags, null, 'getObjectPHID');
+      foreach ($commits as $commit) {
+        $commit->attachFlag(
+          $viewer,
+          idx($flags, $commit->getPHID()));
       }
     }
 

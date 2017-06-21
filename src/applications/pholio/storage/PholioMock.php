@@ -7,6 +7,7 @@ final class PholioMock extends PholioDAO
     PhabricatorSubscribableInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorApplicationTransactionInterface,
     PhabricatorProjectInterface,
     PhabricatorDestructibleInterface,
@@ -217,8 +218,8 @@ final class PholioMock extends PholioDAO
 
 
   public function getMarkupFieldKey($field) {
-    $hash = PhabricatorHash::digest($this->getMarkupText($field));
-    return 'M:'.$hash;
+    $content = $this->getMarkupText($field);
+    return PhabricatorMarkupEngine::digestRemarkupContent($this, $content);
   }
 
   public function newMarkupEngine($field) {
@@ -311,6 +312,13 @@ final class PholioMock extends PholioDAO
     return $this->spacePHID;
   }
 
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
+  }
 
 /* -(  PhabricatorFulltextInterface  )--------------------------------------- */
 

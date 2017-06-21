@@ -9,24 +9,89 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
 
   public function isStoryAboutObjectCreation($object) {
     $story = $this->getFeedStory();
-    $action = $story->getStoryData()->getValue('action');
+    $xaction = $story->getPrimaryTransaction();
 
-    return ($action == DifferentialAction::ACTION_CREATE);
+    switch ($xaction->getTransactionType()) {
+      case DifferentialTransaction::TYPE_ACTION:
+        return $xaction->getNewValue() == DifferentialAction::ACTION_CREATE;
+    		break;
+
+      case PhabricatorTransactions::TYPE_CUSTOMFIELD:
+        $custom_field_name = $xaction->getMetadataValue('customfield:key');
+        if ($custom_field_name == 'differential:title' && !strlen($xaction->getOldValue())) {
+          return true;
+        }
+        break;
+    }
+
+    return false;
   }
 
   public function isStoryAboutObjectClosure($object) {
     $story = $this->getFeedStory();
-    $action = $story->getStoryData()->getValue('action');
+    $xaction = $story->getPrimaryTransaction();
 
-    return ($action == DifferentialAction::ACTION_CLOSE) ||
-           ($action == DifferentialAction::ACTION_ABANDON);
+    if ($xaction->getTransactionType() == DifferentialTransaction::TYPE_ACTION) {
+      $close_statuses = array(
+        DifferentialAction::ACTION_CLOSE, DifferentialAction::ACTION_ABANDON);
+
+      return in_array($xaction->getNewValue(), $close_statuses);
+    }
+
+    return false;
+  }
+
+  public function isStoryAboutObjectReview($object) {
+    $status = $object->getStatus();
+    $needs_review_status = ArcanistDifferentialRevisionStatus::NEEDS_REVIEW;
+    if ($status != $needs_review_status) {
+      return false;
+    }
+
+    $story = $this->getFeedStory();
+
+    // When creating revision & adding reviewer,
+    // then "reviewer added" transaction isn't primary.
+    foreach ($story->getValue('transactionPHIDs') as $xaction_phid) {
+      $xaction = $story->getObject($xaction_phid);
+
+      switch ($xaction->getTransactionType()) {
+        // Action, that results in status change to "Needs Review".
+        case DifferentialRevisionReclaimTransaction::TRANSACTIONTYPE:
+        case DifferentialRevisionReopenTransaction::TRANSACTIONTYPE:
+        case DifferentialRevisionRequestReviewTransaction::TRANSACTIONTYPE:
+        case DifferentialRevisionReviewersTransaction::TRANSACTIONTYPE:
+        // Revision diff updated.
+        case DifferentialTransaction::TYPE_UPDATE:
+          return count($object->getReviewers()) > 0;
+          break;
+      }
+    }
+
+    return false;
+  }
+
+  public function isStoryAboutObjectAccept($object) {
+    $story = $this->getFeedStory();
+    $xaction = $story->getPrimaryTransaction();
+
+    return $xaction->getTransactionType()
+      == DifferentialRevisionAcceptTransaction::TRANSACTIONTYPE;
+  }
+
+  public function isStoryAboutObjectReject($object) {
+    $story = $this->getFeedStory();
+    $xaction = $story->getPrimaryTransaction();
+
+    return $xaction->getTransactionType()
+      == DifferentialRevisionRejectTransaction::TRANSACTIONTYPE;
   }
 
   public function willPublishStory($object) {
     return id(new DifferentialRevisionQuery())
       ->setViewer($this->getViewer())
       ->withIDs(array($object->getID()))
-      ->needRelationships(true)
+      ->needReviewers(true)
       ->executeOne();
   }
 
@@ -37,7 +102,7 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
   public function getActiveUserPHIDs($object) {
     $status = $object->getStatus();
     if ($status == ArcanistDifferentialRevisionStatus::NEEDS_REVIEW) {
-      return $object->getReviewers();
+      return $object->getReviewerPHIDs();
     } else {
       return array();
     }
@@ -48,12 +113,13 @@ final class DifferentialDoorkeeperRevisionFeedStoryPublisher
     if ($status == ArcanistDifferentialRevisionStatus::NEEDS_REVIEW) {
       return array();
     } else {
-      return $object->getReviewers();
+      return $object->getReviewerPHIDs();
     }
   }
 
   public function getCCUserPHIDs($object) {
-    return $object->getCCPHIDs();
+    return PhabricatorSubscribersQuery::loadSubscribersForPHID(
+      $object->getPHID());
   }
 
   public function getObjectTitle($object) {

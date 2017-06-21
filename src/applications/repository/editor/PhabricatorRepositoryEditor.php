@@ -24,6 +24,10 @@ final class PhabricatorRepositoryEditor
     $types[] = PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE_ONLY;
     $types[] = PhabricatorRepositoryTransaction::TYPE_UUID;
     $types[] = PhabricatorRepositoryTransaction::TYPE_SVN_SUBPATH;
+    $types[] = PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT;
+    $types[] = PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER;
+    $types[] = PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER;
+    $types[] = PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER;
     $types[] = PhabricatorRepositoryTransaction::TYPE_NOTIFY;
     $types[] = PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE;
     $types[] = PhabricatorRepositoryTransaction::TYPE_PUSH_POLICY;
@@ -68,6 +72,14 @@ final class PhabricatorRepositoryEditor
         return $object->getUUID();
       case PhabricatorRepositoryTransaction::TYPE_SVN_SUBPATH:
         return $object->getDetail('svn-subpath');
+      case PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT:
+        return $object->getDetail('svn-layout');
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER:
+        return $object->getDetail('svn-trunk-folder');
+      case PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER:
+        return $object->getDetail('svn-branches-folder');
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER:
+        return $object->getDetail('svn-tags-folder');
       case PhabricatorRepositoryTransaction::TYPE_NOTIFY:
         return (int)!$object->getDetail('herald-disabled');
       case PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE:
@@ -107,6 +119,10 @@ final class PhabricatorRepositoryEditor
       case PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE_ONLY:
       case PhabricatorRepositoryTransaction::TYPE_UUID:
       case PhabricatorRepositoryTransaction::TYPE_SVN_SUBPATH:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER:
       case PhabricatorRepositoryTransaction::TYPE_VCS:
       case PhabricatorRepositoryTransaction::TYPE_PUSH_POLICY:
       case PhabricatorRepositoryTransaction::TYPE_DANGEROUS:
@@ -172,6 +188,18 @@ final class PhabricatorRepositoryEditor
         break;
       case PhabricatorRepositoryTransaction::TYPE_SVN_SUBPATH:
         $object->setDetail('svn-subpath', $xaction->getNewValue());
+        break;
+      case PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT:
+        $object->setSubversionLayout($xaction->getNewValue());
+        break;
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER:
+        $object->setDetail('svn-trunk-folder', $xaction->getNewValue());
+        break;
+      case PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER:
+        $object->setDetail('svn-branches-folder', $xaction->getNewValue());
+        break;
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER:
+        $object->setDetail('svn-tags-folder', $xaction->getNewValue());
         break;
       case PhabricatorRepositoryTransaction::TYPE_NOTIFY:
         $object->setDetail('herald-disabled', (int)!$xaction->getNewValue());
@@ -243,6 +271,10 @@ final class PhabricatorRepositoryEditor
       case PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE_ONLY:
       case PhabricatorRepositoryTransaction::TYPE_UUID:
       case PhabricatorRepositoryTransaction::TYPE_SVN_SUBPATH:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER:
+      case PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER:
       case PhabricatorRepositoryTransaction::TYPE_VCS:
       case PhabricatorRepositoryTransaction::TYPE_NOTIFY:
       case PhabricatorRepositoryTransaction::TYPE_AUTOCLOSE:
@@ -633,6 +665,10 @@ final class PhabricatorRepositoryEditor
         ->setRepository($object)
         ->synchronizeWorkingCopyAfterCreation();
     }
+
+    $object->writeStatusMessage(
+      PhabricatorRepositoryStatusMessage::TYPE_NEEDS_UPDATE,
+      null);
 
     return $xactions;
   }

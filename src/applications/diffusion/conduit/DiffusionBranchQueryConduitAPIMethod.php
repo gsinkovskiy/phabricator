@@ -84,9 +84,24 @@ final class DiffusionBranchQueryConduitAPIMethod
   }
 
   protected function getSVNResult(ConduitAPIRequest $request) {
-    // Since SVN doesn't have meaningful branches, just return nothing for all
-    // queries.
-    return array();
+    $drequest = $this->getDiffusionRequest();
+    $repository = $drequest->getRepository();
+
+    if (!$repository->supportsBranches()) {
+      return array();
+    }
+
+    $query = id(new DiffusionLowLevelSVNRefQuery())
+      ->setRepository($repository);
+
+    $contains = $request->getValue('contains');
+    if (strlen($contains)) {
+      $query->withContainsCommit($contains);
+    }
+
+    $refs = $query->execute();
+
+    return $this->processBranchRefs($request, $refs);
   }
 
   private function processBranchRefs(ConduitAPIRequest $request, array $refs) {

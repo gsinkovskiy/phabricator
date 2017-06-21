@@ -32,13 +32,14 @@ final class DiffusionRepositorySubversionManagementPanel
 
   protected function getEditEngineFieldKeys() {
     return array(
-      'importOnly',
+      'importOnly', 'layout', 'trunk_folder', 'branches_folder', 'tags_folder',
     );
   }
 
-  protected function buildManagementPanelActions() {
+  public function buildManagementPanelCurtain() {
     $repository = $this->getRepository();
     $viewer = $this->getViewer();
+    $action_list = $this->getNewActionList();
 
     $can_edit = PhabricatorPolicyFilter::hasCapability(
       $viewer,
@@ -47,14 +48,15 @@ final class DiffusionRepositorySubversionManagementPanel
 
     $subversion_uri = $this->getEditPageURI();
 
-    return array(
+    $action_list->addAction(
       id(new PhabricatorActionView())
         ->setIcon('fa-pencil')
         ->setName(pht('Edit Properties'))
         ->setHref($subversion_uri)
         ->setDisabled(!$can_edit)
-        ->setWorkflow(!$can_edit),
-    );
+        ->setWorkflow(!$can_edit));
+
+    return $this->getNewCurtainView($action_list);
   }
 
   public function buildManagementPanelContent() {
@@ -62,14 +64,38 @@ final class DiffusionRepositorySubversionManagementPanel
     $viewer = $this->getViewer();
 
     $view = id(new PHUIPropertyListView())
-      ->setViewer($viewer)
-      ->setActionList($this->newActions());
+      ->setViewer($viewer);
 
     $default_branch = nonempty(
       $repository->getHumanReadableDetail('svn-subpath'),
       phutil_tag('em', array(), pht('Import Entire Repository')));
     $view->addProperty(pht('Import Only'), $default_branch);
 
+    $layout_folders = array(
+      $repository->getSubversionTrunkFolder(),
+      $repository->getSubversionBranchesFolder(),
+      $repository->getSubversionTagsFolder(),);
+
+    switch ($repository->getSubversionLayout()) {
+      case PhabricatorRepository::LAYOUT_NONE:
+        $svn_layout = pht('None');
+        break;
+
+      case PhabricatorRepository::LAYOUT_STANDARD:
+        $svn_layout = 'Standard ('.implode(', ', $layout_folders).')';
+        break;
+
+      case PhabricatorRepository::LAYOUT_CUSTOM:
+        $svn_layout = 'Custom ('.implode(', ', $layout_folders).')';
+        break;
+
+      default:
+        throw new Exception('Unknown repository layout: '.
+          $repository->getSubversionLayout());
+    }
+
+    $svn_layout = phutil_tag('em', array(), $svn_layout);
+    $view->addProperty(pht('Layout'), $svn_layout);
 
     return $this->newBox(pht('Subversion'), $view);
   }

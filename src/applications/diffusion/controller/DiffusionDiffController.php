@@ -19,6 +19,9 @@ final class DiffusionDiffController extends DiffusionController {
     $viewer = $this->getViewer();
     $drequest = $this->getDiffusionRequest();
 
+    $whitespace = $request->getStr('whitespace',
+      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+
     if (!$request->isAjax()) {
 
       // This request came out of the dropdown menu, either "View Standalone"
@@ -36,7 +39,10 @@ final class DiffusionDiffController extends DiffusionController {
       } else {
         $uri = $drequest->generateURI(
           array(
-            'action'  => 'change',
+            'action' => 'change',
+            'params' => array(
+              'whitespace' => $whitespace,
+            ),
           ));
       }
 
@@ -88,20 +94,28 @@ final class DiffusionDiffController extends DiffusionController {
       ($viewer->getPHID() == $commit->getAuthorPHID()));
     $parser->setObjectOwnerPHID($commit->getAuthorPHID());
 
-    $parser->setWhitespaceMode(
-      DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+    $parser->setWhitespaceMode($whitespace);
 
-    $inlines = PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
+    $inlines =
+      array_merge(PhabricatorAuditInlineComment::loadDraftAndPublishedComments(
       $viewer,
       $commit->getPHID(),
-      $path_id);
+      $path_id),
+    $this->getLintMessages(
+      $commit,
+      $changeset->getFilename(),
+      $path_id));
 
     if ($inlines) {
+      $phids = array();
       foreach ($inlines as $inline) {
         $parser->parseInlineComment($inline);
+        if ($inline->getAuthorPHID()) {
+          $phids[$inline->getAuthorPHID()] = true;
+        }
       }
+      $phids = array_keys($phids);
 
-      $phids = mpull($inlines, 'getAuthorPHID');
       $handles = $this->loadViewerHandles($phids);
       $parser->setHandles($handles);
     }
@@ -130,4 +144,56 @@ final class DiffusionDiffController extends DiffusionController {
       ->setRenderedChangeset($parser->renderChangeset())
       ->setUndoTemplates($parser->getRenderer()->renderUndoTemplates());
   }
+
+  private function getLintMessages(
+    PhabricatorRepositoryCommit $commit, $filename, $path_id) {
+    $properties = id(new PhabricatorRepositoryCommitProperty())->loadAllWhere(
+      'commitID = %d AND name IN (%Ls)',
+      $commit->getID(),
+      array('checkstyle:warnings', 'pmd:warnings'));
+
+    if (!$properties) {
+      return array();
+    }
+
+    $inlines = array();
+
+    foreach ($properties as $property) {
+      $warnings = $property->getData();
+
+      if (!idx($warnings, $filename)) {
+        continue;
+      }
+
+      $synthetic_author = $this->getSyntheticAuthor($property);
+
+      foreach ($warnings[$filename] as $warning) {
+        $priority = ucfirst(strtolower($warning['priority'])).' Priority';
+
+        $inline = new PhabricatorAuditInlineComment();
+        $inline->setChangesetID($path_id);
+        $inline->setIsNewFile(1);
+        $inline->setSyntheticAuthor($synthetic_author.' ('.$priority.')');
+        $inline->setLineNumber($warning['line']);
+        $inline->setLineLength(0);
+
+        $inline->setContent('%%%'.$warning['message'].'%%%');
+        $inlines[] = $inline;
+      }
+    }
+
+    return $inlines;
+  }
+
+  private function getSyntheticAuthor(
+    PhabricatorRepositoryCommitProperty $property) {
+    if ($property->getName() == 'checkstyle:warnings') {
+      return 'Lint: Checkstyle Warning';
+    } else if ($property->getName() == 'pmd:warnings') {
+      return 'Lint: PMD Warning';
+    }
+
+    return 'Lint: Unknown Warning Type';
+  }
+
 }

@@ -24,8 +24,17 @@ final class PhabricatorRepositoryRefEngine
     $vcs = $repository->getVersionControlSystem();
     switch ($vcs) {
       case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
-        // No meaningful refs of any type in Subversion.
-        $maps = array();
+        if ($repository->supportsBranches()) {
+          $branches = $this->loadSVNBranchPositions($repository);
+          $tags = $this->loadSVNTagPositions($repository);
+        } else {
+          $branches = array();
+          $tags = array();
+        }
+        $maps = array(
+          PhabricatorRepositoryRefCursor::TYPE_BRANCH => $branches,
+          PhabricatorRepositoryRefCursor::TYPE_TAG => $tags,
+        );
         break;
       case PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL:
         $branches = $this->loadMercurialBranchPositions($repository);
@@ -381,6 +390,30 @@ final class PhabricatorRepositoryRefEngine
           return array();
         }
         return phutil_split_lines($stdout, $retain_newlines = false);
+      case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
+        if (!$this->getRepository()->supportsBranches()) {
+          return array();
+        }
+
+        list($xml) = $this->getRepository()->execxRemoteCommand(
+            'log %s --xml --revision %d --limit 1',
+            $this->getRepository()->getSubversionBaseURI(),
+            $new_head);
+        $log = new SimpleXMLElement($xml);
+
+        $commits = array();
+        $commit = (int)$log->logentry['revision'];
+
+        if ($all_closing_heads) {
+          if (!in_array($commit, $all_closing_heads)) {
+            $commits[] = $commit;
+          }
+        } else {
+          $commits[] = $commit;
+        }
+
+        return $commits;
+        break;
       default:
         throw new Exception(pht('Unsupported VCS "%s"!', $vcs));
     }
@@ -491,4 +524,20 @@ final class PhabricatorRepositoryRefEngine
     return array();
   }
 
+/* -(  Updating SVN Refs  )-------------------------------------------- */
+
+  private function loadSVNBranchPositions(
+    PhabricatorRepository $repository) {
+    return id(new DiffusionLowLevelSVNRefQuery())
+      ->setRepository($repository)
+      ->execute();
+  }
+
+  private function loadSVNTagPositions(
+    PhabricatorRepository $repository) {
+    return id(new DiffusionLowLevelSVNRefQuery())
+      ->setRepository($repository)
+      ->withIsTag(true)
+      ->execute();
+  }
 }

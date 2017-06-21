@@ -5,10 +5,13 @@ final class PhabricatorRepositoryCommit
   implements
     PhabricatorPolicyInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
+    PhabricatorStatusIconInterface,
     PhabricatorProjectInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorSubscribableInterface,
     PhabricatorMentionableInterface,
+    PhrequentTrackableInterface,
     HarbormasterBuildableInterface,
     HarbormasterCircleCIBuildableInterface,
     HarbormasterBuildkiteBuildableInterface,
@@ -25,6 +28,7 @@ final class PhabricatorRepositoryCommit
   protected $mailKey;
   protected $authorPHID;
   protected $auditStatus = PhabricatorAuditCommitStatusConstants::NONE;
+  protected $commitType = PhabricatorCommitType::COMMIT_REGULAR;
   protected $summary = '';
   protected $importStatus = 0;
 
@@ -39,6 +43,7 @@ final class PhabricatorRepositoryCommit
 
   private $commitData = self::ATTACHABLE;
   private $audits = self::ATTACHABLE;
+  private $flags = array();
   private $repository = self::ATTACHABLE;
   private $customFields = self::ATTACHABLE;
   private $drafts = array();
@@ -113,6 +118,7 @@ final class PhabricatorRepositoryCommit
         'mailKey' => 'bytes20',
         'authorPHID' => 'phid?',
         'auditStatus' => 'uint32',
+        'commitType' => 'uint32',
         'summary' => 'text255',
         'importStatus' => 'uint32',
       ),
@@ -291,6 +297,17 @@ final class PhabricatorRepositoryCommit
     return mpull($audits, 'getAuditorPHID');
   }
 
+  public function getFlag(PhabricatorUser $viewer) {
+    return $this->assertAttachedKey($this->flags, $viewer->getPHID());
+  }
+
+  public function attachFlag(
+    PhabricatorUser $viewer,
+    PhabricatorFlag $flag = null) {
+    $this->flags[$viewer->getPHID()] = $flag;
+    return $this;
+  }
+
   public function save() {
     if (!$this->mailKey) {
       $this->mailKey = Filesystem::readRandomCharacters(20);
@@ -375,6 +392,19 @@ final class PhabricatorRepositoryCommit
     }
 
     return $this->setAuditStatus($status);
+  }
+
+  public function parseCommitMessage($commit_message = null) {
+    if (!isset($commit_message)) {
+      $commit_message = $this->getSummary();
+    }
+
+    $regs = null;
+    if (preg_match('/^\[(fixes: [^\]]+)\] (.*)$/s', $commit_message, $regs)) {
+      return array($regs[1], $regs[2]);
+    }
+
+    return array('', $commit_message);
   }
 
   public function getMonogram() {
@@ -486,6 +516,7 @@ final class PhabricatorRepositoryCommit
       'mailKey' => $this->getMailKey(),
       'authorPHID' => $this->getAuthorPHID(),
       'auditStatus' => $this->getAuditStatus(),
+      'commitType' => $this->getCommitType(),
       'summary' => $this->getSummary(),
       'importStatus' => $this->getImportStatus(),
     );
@@ -702,6 +733,28 @@ final class PhabricatorRepositoryCommit
     }
 
     return $timeline->setPathMap($path_map);
+  }
+
+/* -(  PhabricatorStatusIconInterface  )--------------------------------------- */
+
+  public function setStatusIcon(PHUIObjectItemView $item) {
+    $status_code = $this->getAuditStatus();
+    $status_text =
+      PhabricatorAuditCommitStatusConstants::getStatusName($status_code);
+    $status_color =
+      PhabricatorAuditCommitStatusConstants::getStatusColor($status_code);
+    $status_icon =
+      PhabricatorAuditCommitStatusConstants::getStatusIcon($status_code);
+
+    $item->setStatusIcon($status_icon.' '.$status_color, $status_text);
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 /* -(  PhabricatorFulltextInterface  )--------------------------------------- */

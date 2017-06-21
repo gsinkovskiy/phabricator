@@ -3,7 +3,7 @@
 final class DiffusionSvnRequest extends DiffusionRequest {
 
   public function supportsBranches() {
-    return false;
+    return $this->repository->supportsBranches();
   }
 
   protected function isStableCommit($symbol) {
@@ -19,8 +19,20 @@ final class DiffusionSvnRequest extends DiffusionRequest {
     }
   }
 
-  protected function getArcanistBranch() {
-    return 'svn';
+  public function getBranch() {
+    if (!$this->repository || !$this->repository->supportsBranches()) {
+      return $this->branch;
+    }
+
+    if ($this->branch) {
+      return $this->branch;
+    }
+
+    if ($this->repository) {
+      return $this->repository->getDefaultBranch();
+    }
+
+    throw new Exception('Unable to determine branch!');
   }
 
 }

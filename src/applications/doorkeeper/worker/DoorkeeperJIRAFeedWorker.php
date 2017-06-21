@@ -40,14 +40,6 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
       return;
     }
 
-    $do_anything = ($this->shouldPostComment() || $this->shouldPostLink());
-    if (!$do_anything) {
-      $this->log(
-        "%s\n",
-        pht('JIRA integration is configured not to post anything.'));
-      return;
-    }
-
     $xobjs = id(new DoorkeeperExternalObjectQuery())
       ->setViewer($viewer)
       ->withPHIDs($jira_issue_phids)
@@ -68,6 +60,7 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
       return;
     }
 
+    $story_text = $this->renderStoryText();
 
     $xobjs = mgroup($xobjs, 'getApplicationDomain');
     foreach ($xobjs as $domain => $xobj_list) {
@@ -90,32 +83,191 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
 
       foreach ($xobj_list as $xobj) {
         foreach ($accounts as $account) {
-          try {
-            $jira_key = $xobj->getObjectID();
-
-            if ($this->shouldPostComment()) {
-              $this->postComment($account, $jira_key);
-            }
-
-            if ($this->shouldPostLink()) {
-              $this->postLink($account, $jira_key);
-            }
-
-            break;
-          } catch (HTTPFutureResponseStatus $ex) {
-            phlog($ex);
-            $this->log(
-              "%s\n",
-              pht(
-                'Failed to update object %s using user %s.',
-                $xobj->getObjectID(),
-                $account->getUserPHID()));
-          }
+          $this->postLink($account, $xobj);
+          $this->addComment($account, $xobj, $story_text);
+          $this->transitionIssue($accounts, $account, $xobj);
+          break;
         }
       }
     }
   }
 
+  private function postLink(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj) {
+
+    if (!$this->shouldPostLink()) {
+      return;
+    }
+
+    $object = $this->getStoryObject();
+    $publisher = $this->getPublisher();
+    $base_uri = PhabricatorEnv::getEnvConfig('phabricator.base-uri');
+
+    preg_match(
+      '/^(.*?): (.*)$/',
+      $publisher->getObjectTitle($object),
+      $regs);
+
+    $icon_uri = celerity_get_resource_uri('rsrc/favicons/favicon-16x16.png');
+
+    $post_data = array(
+      'globalId' => 'appId=ph_'.crc32($base_uri).'&phid='.$object->getPHID(),
+      'application' => array(
+        'type' => 'com.phacility.phabricator',
+        'name' => 'Phabricator',
+      ),
+      'relationship' => 'implemented in',
+      'object' => array(
+        'url' => $publisher->getObjectURI($object),
+        'title' => $regs[1], // Object identifier (e.g. D3).
+        'summary' => $regs[2], // Object title.
+        'icon' => array(
+          'url16x16' => $icon_uri,
+          'title' => 'Phabricator',
+        ),
+        'status' => array(
+          'resolved' => $publisher->isObjectClosed($object),
+        ),
+      ),
+    );
+
+    try {
+      $this->getProvider()->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/remotelink',
+        'POST',
+        $post_data)->resolveJSON();
+    } catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log(
+        "Failed to create remote link on '%s' JIRA issue.\n",
+        $xobj->getObjectID());
+    }
+  }
+
+  private function addComment(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj,
+    $story_text) {
+
+    if (!$this->shouldPostComment()) {
+      return;
+    }
+
+    try {
+      $this->getProvider()->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/comment',
+        'POST',
+        array(
+          'body' => $story_text,
+        ))->resolveJSON();
+    } catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log(
+        "Failed to add comment to '%s' JIRA issue.\n",
+        $xobj->getObjectID());
+    }
+  }
+
+  private function transitionIssue(
+    array $accounts,
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj) {
+
+    $provider = $this->getProvider();
+    $provider_config = $provider->getProviderConfig();
+    $object = $this->getStoryObject();
+    $publisher = $this->getPublisher();
+
+    $review_transition_name = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_REVIEW_TRANSITION);
+    $accept_transition_name = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_ACCEPT_TRANSITION);
+    $reject_transition_name = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_REJECT_TRANSITION);
+
+    if ($review_transition_name && $publisher->isStoryAboutObjectReview($object)) {
+      $reviewer_account = idx($accounts, head($publisher->getActiveUserPHIDs($object)));
+      $reviewer_field = $provider_config->getProperty(PhabricatorJIRAAuthProvider::PROPERTY_JIRA_REVIEWER_FIELD);
+      $this->executeTransition($account, $xobj, $review_transition_name, array(
+        $reviewer_field => $reviewer_account->getAccountID()
+      ));
+    } elseif ($accept_transition_name && $publisher->isStoryAboutObjectAccept($object)) {
+      $this->executeTransition($account, $xobj, $accept_transition_name);
+    } elseif ($reject_transition_name && $publisher->isStoryAboutObjectReject($object)) {
+      $this->executeTransition($account, $xobj, $reject_transition_name);
+    }
+  }
+
+  private function executeTransition(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj,
+    $transition_name,
+    array $fields = array()) {
+
+    $transition_id = $this->getTransitionId($account, $xobj, $transition_name);
+    if ($transition_id === false) {
+      $this->log('Transition "'.$transition_name.'" not found for "'.$xobj->getObjectID().'" JIRA issue');
+
+      return;
+    }
+
+    $post_data = array(
+      'transition' => array(
+        'id' => $transition_id,
+      ),
+    );
+
+    if ($fields) {
+      $formatted_fields = array();
+      foreach ($fields as $field_name => $field_value) {
+        $formatted_fields[$field_name] = array(
+          'name' => $field_value,
+        );
+      }
+
+      $post_data['fields'] = $formatted_fields;
+    }
+
+    $provider = $this->getProvider();
+
+    try {
+      $provider->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/transitions',
+        'POST',
+        $post_data)->resolvex();
+    }
+    catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log('Failed executing transition "'.$transition_name.'" on "'.$xobj->getObjectID().'" JIRA issue');
+    }
+  }
+
+  private function getTransitionId(
+    PhabricatorExternalAccount $account,
+    DoorkeeperExternalObject $xobj,
+    $transition_name) {
+
+    $provider = $this->getProvider();
+
+    try {
+      $response = $provider->newJIRAFuture(
+        $account,
+        'rest/api/2/issue/'.$xobj->getObjectID().'/transitions',
+        'GET')->resolveJSON();
+
+      foreach ($response['transitions'] as $transition) {
+        if ($transition['name'] == $transition_name) {
+          return $transition['id'];
+        }
+      }
+    } catch (HTTPFutureResponseStatus $ex) {
+      phlog($ex);
+      $this->log('Failed to get transitions for "'.$xobj->getObjectID().'" JIRA issue');
+    }
+
+    return false;
+  }
 
 /* -(  Internals  )---------------------------------------------------------- */
 
@@ -187,18 +339,6 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     return $this->getProvider()->shouldCreateJIRALink();
   }
 
-  private function postComment($account, $jira_key) {
-    $provider = $this->getProvider();
-
-    $provider->newJIRAFuture(
-      $account,
-      'rest/api/2/issue/'.$jira_key.'/comment',
-      'POST',
-      array(
-        'body' => $this->renderStoryText(),
-      ))->resolveJSON();
-  }
-
   private function renderStoryText() {
     $object = $this->getStoryObject();
     $publisher = $this->getPublisher();
@@ -213,36 +353,4 @@ final class DoorkeeperJIRAFeedWorker extends DoorkeeperFeedWorker {
     }
   }
 
-  private function postLink($account, $jira_key) {
-    $provider = $this->getProvider();
-    $object = $this->getStoryObject();
-    $publisher = $this->getPublisher();
-    $icon_uri = celerity_get_resource_uri('rsrc/favicons/favicon-16x16.png');
-
-    $provider->newJIRAFuture(
-      $account,
-      'rest/api/2/issue/'.$jira_key.'/remotelink',
-      'POST',
-
-      // format documented at http://bit.ly/1K5T0Li
-      array(
-        'globalId' => $object->getPHID(),
-        'application' => array(
-          'type' => 'com.phacility.phabricator',
-          'name' => 'Phabricator',
-        ),
-        'relationship' => 'implemented in',
-        'object' => array(
-          'url'     => $publisher->getObjectURI($object),
-          'title'   => $publisher->getObjectTitle($object),
-          'icon'    => array(
-            'url16x16'  => $icon_uri,
-            'title'     => 'Phabricator',
-          ),
-          'status' => array(
-            'resolved' => $publisher->isObjectClosed($object),
-          ),
-        ),
-      ))->resolveJSON();
-  }
 }

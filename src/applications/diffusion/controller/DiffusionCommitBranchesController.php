@@ -13,7 +13,6 @@ final class DiffusionCommitBranchesController extends DiffusionController {
     }
 
     $drequest = $this->getDiffusionRequest();
-    $repository = $drequest->getRepository();
 
     $branch_limit = 10;
     $branches = DiffusionRepositoryRef::loadAllFromDictionaries(

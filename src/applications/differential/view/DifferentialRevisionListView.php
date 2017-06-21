@@ -5,7 +5,7 @@
  */
 final class DifferentialRevisionListView extends AphrontView {
 
-  private $revisions;
+  private $revisions = array();
   private $handles;
   private $header;
   private $noDataString;
@@ -52,10 +52,7 @@ final class DifferentialRevisionListView extends AphrontView {
     $phids = array();
     foreach ($this->revisions as $revision) {
       $phids[] = array($revision->getAuthorPHID());
-
-      // TODO: Switch to getReviewerStatus(), but not all callers pass us
-      // revisions with this data loaded.
-      $phids[] = $revision->getReviewers();
+      $phids[] = $revision->getReviewerPHIDs();
     }
     return array_mergev($phids);
   }
@@ -68,6 +65,20 @@ final class DifferentialRevisionListView extends AphrontView {
 
   public function render() {
     $viewer = $this->getViewer();
+
+    $fresh = PhabricatorEnv::getEnvConfig('differential.days-fresh');
+    if ($fresh) {
+      $fresh = CalendarTimeUtil::getNthBusinessDay(
+        time(),
+        -$fresh);
+    }
+
+    $stale = PhabricatorEnv::getEnvConfig('differential.days-stale');
+    if ($stale) {
+      $stale = CalendarTimeUtil::getNthBusinessDay(
+        time(),
+        -$stale);
+    }
 
     $this->initBehavior('phabricator-tooltips', array());
     $this->requireResource('aphront-tooltip-css');
@@ -84,9 +95,13 @@ final class DifferentialRevisionListView extends AphrontView {
       $flag = $revision->getFlag($viewer);
       if ($flag) {
         $flag_class = PhabricatorFlagColor::getCSSClass($flag->getColor());
-        $icons['flag'] = phutil_tag(
+        $icons['flag'] = javelin_tag(
           'div',
           array(
+            'sigil' => 'has-tooltip',
+            'meta' => array(
+              'tip' => $flag->getNote(),
+            ),
             'class' => 'phabricator-flag-icon '.$flag_class,
           ),
           '');
@@ -97,6 +112,14 @@ final class DifferentialRevisionListView extends AphrontView {
       }
 
       $modified = $revision->getDateModified();
+
+      if ($stale && $modified < $stale) {
+        $object_age = PHUIObjectItemView::AGE_OLD;
+      } else if ($fresh && $modified < $fresh) {
+        $object_age = PHUIObjectItemView::AGE_STALE;
+      } else {
+        $object_age = PHUIObjectItemView::AGE_FRESH;
+      }
 
       if (isset($icons['flag'])) {
         $item->addHeadIcon($icons['flag']);
@@ -117,6 +140,14 @@ final class DifferentialRevisionListView extends AphrontView {
         $item->addAttribute($draft);
       }
 
+      $diff = $revision->getActiveDiff();
+      $branch = $diff->getBranch();
+
+      if ($branch) {
+        $item->addAttribute(pht(
+          'Branch: %s', phutil_tag('em', array(), $branch)));
+      }
+
       // Author
       $author_handle = $this->handles[$revision->getAuthorPHID()];
       $item->addByline(pht('Author: %s', $author_handle->renderLink()));
@@ -132,8 +163,7 @@ final class DifferentialRevisionListView extends AphrontView {
       }
 
       $reviewers = array();
-      // TODO: As above, this should be based on `getReviewerStatus()`.
-      foreach ($revision->getReviewers() as $reviewer) {
+      foreach ($revision->getReviewerPHIDs() as $reviewer) {
         $reviewers[] = $this->handles[$reviewer]->renderLink();
       }
       if (!$reviewers) {
@@ -143,15 +173,13 @@ final class DifferentialRevisionListView extends AphrontView {
       }
 
       $item->addAttribute(pht('Reviewers: %s', $reviewers));
-      $item->setEpoch($revision->getDateModified());
+      $item->setEpoch($revision->getDateModified(), $object_age);
 
       if ($revision->isClosed()) {
         $item->setDisabled(true);
       }
 
-      $item->setStatusIcon(
-        $revision->getStatusIcon(),
-        $revision->getStatusDisplayName());
+      $revision->setStatusIcon($item);
 
       $list->addItem($item);
     }

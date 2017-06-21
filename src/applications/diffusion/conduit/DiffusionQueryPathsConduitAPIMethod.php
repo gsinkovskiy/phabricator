@@ -25,6 +25,12 @@ final class DiffusionQueryPathsConduitAPIMethod
     );
   }
 
+  protected function defineCustomErrorTypes() {
+    return array(
+      'ERR-UNKNOWN-FOLDER-LAYOUT' => 'Unknown SVN repository folder layout',
+    );
+  }
+
   protected function getResult(ConduitAPIRequest $request) {
     $results = parent::getResult($request);
     $offset = $request->getValue('offset');
@@ -46,6 +52,85 @@ final class DiffusionQueryPathsConduitAPIMethod
 
     $lines = id(new LinesOfALargeExecFuture($future))->setDelimiter("\0");
     return $this->filterResults($lines, $request);
+  }
+
+  protected function getSVNResult(ConduitAPIRequest $request) {
+    $drequest = $this->getDiffusionRequest();
+    $path = $drequest->getPath();
+
+    $raw_lines = queryfx_all(
+      id(new PhabricatorRepository())->establishConnection('r'),
+      'SELECT path FROM %T WHERE path LIKE %s',
+      PhabricatorRepository::TABLE_PATH,
+      '/'.$path.$this->getSVNRefName($request).'/%');
+
+    $lines = array();
+    $sub_path_start = strlen('/'.$path);
+    foreach ($raw_lines as $raw_line) {
+      $lines[] = substr($raw_line['path'], $sub_path_start);
+    }
+
+    return $this->filterResults($lines, $request);
+  }
+
+  private function getSVNRefName(ConduitAPIRequest $request) {
+    $drequest = $this->getDiffusionRequest();
+
+    $branches = DiffusionQuery::callConduitWithDiffusionRequest(
+      $request->getUser(),
+      $drequest,
+      'diffusion.branchquery',
+      array(
+        'contains' => $drequest->getCommit(),
+      ));
+
+    if ($branches) {
+      return idx(head($branches), 'shortName');
+    }
+
+    $tags = DiffusionQuery::callConduitWithDiffusionRequest(
+      $request->getUser(),
+      $drequest,
+      'diffusion.tagsquery',
+      array(
+        'commit' => $drequest->getCommit(),
+      ));
+
+    if ($tags) {
+      return idx(head($tags), 'name');
+    }
+
+    return $this->guessSVNRefName();
+  }
+
+  private function guessSVNRefName() {
+    $drequest = $this->getDiffusionRequest();
+    $path = $drequest->getPath();
+
+    $path_change_query = DiffusionPathChangeQuery::newFromDiffusionRequest(
+      $drequest);
+
+    $first_changed_path = null;
+    foreach ($path_change_query->loadChanges() as $change) {
+      $first_changed_path = preg_replace(
+        '#^'.$path.'#', '', $change->getPath());
+      break;
+    }
+
+    $match_expressions = array(
+      '#^trunk(/|$)#',
+      '#^branches/([^/]+)#',
+      '#^(tags|releases)/([^/]+)#',
+    );
+
+    $regs = null;
+    foreach ($match_expressions as $match_expression) {
+      if (preg_match($match_expression, $first_changed_path, $regs)) {
+        return rtrim($regs[0], '/');
+      }
+    }
+
+    throw new ConduitException('ERR-UNKNOWN-FOLDER-LAYOUT');
   }
 
   protected function getMercurialResult(ConduitAPIRequest $request) {

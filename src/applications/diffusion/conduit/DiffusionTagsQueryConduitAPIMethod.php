@@ -164,8 +164,57 @@ final class DiffusionTagsQueryConduitAPIMethod
   }
 
   protected function getSVNResult(ConduitAPIRequest $request) {
-    // Subversion has no meaningful concept of tags.
-    return array();
+    $name_filter = $request->getValue('names', null);
+
+    $all_tags = $this->loadSVNTagList();
+
+    if ($name_filter !== null) {
+      $all_tags = array_intersect_key($all_tags, array_fuse($name_filter));
+    }
+
+    $tags = array_values($all_tags);
+
+    $offset = $request->getValue('offset');
+    $limit = $request->getValue('limit');
+    if ($offset) {
+      $tags = array_slice($tags, $offset);
+    }
+
+    if ($limit) {
+      $tags = array_slice($tags, 0, $limit);
+    }
+
+    return mpull($tags, 'toDictionary');
+  }
+
+  private function loadSVNTagList() {
+    $drequest = $this->getDiffusionRequest();
+    $repository = $drequest->getRepository();
+
+    if (!$repository->supportsBranches()) {
+      return array();
+    }
+
+    $refs = id(new DiffusionLowLevelSVNRefQuery())
+      ->setRepository($repository)
+      ->withContainsCommit($drequest->getSymbolicCommit())
+      ->withIsTag(true)
+      ->execute();
+
+    $tags = array();
+    foreach ($refs as $ref) {
+      $fields = $ref->getRawFields();
+      $tag = id(new DiffusionRepositoryTag())
+        ->setAuthor($fields['author'])
+        ->setEpoch($fields['epoch'])
+        ->setCommitIdentifier($ref->getCommitIdentifier())
+        ->setName($ref->getShortName())
+        ->setType('svn/commit');
+
+      $tags[$ref->getShortName()] = $tag;
+    }
+
+    return $tags;
   }
 
 }

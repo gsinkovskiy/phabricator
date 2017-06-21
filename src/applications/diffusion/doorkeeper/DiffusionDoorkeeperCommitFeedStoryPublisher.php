@@ -51,6 +51,48 @@ final class DiffusionDoorkeeperCommitFeedStoryPublisher
     return false;
   }
 
+  public function isStoryAboutObjectReview($object) {
+    if ($this->isObjectClosed($object)) {
+      return false;
+    }
+
+    $story = $this->getFeedStory();
+
+    // When creating commit & adding auditor (e.g. via Herald rule),
+    // then "auditor added" transaction isn't primary.
+    foreach ($story->getValue('transactionPHIDs') as $xaction_phid) {
+      $xaction = $story->getObject($xaction_phid);
+
+      if ($xaction->getTransactionType() == PhabricatorAuditActionConstants::ADD_AUDITORS) {
+        return count($this->getActiveUserPHIDs($object)) > 0;
+      }
+    }
+
+    return false;
+  }
+
+  public function isStoryAboutObjectAccept($object) {
+    $story = $this->getFeedStory();
+    $xaction = $story->getPrimaryTransaction();
+
+    if ($xaction->getTransactionType() == PhabricatorAuditActionConstants::ACTION) {
+      return $xaction->getNewValue() == PhabricatorAuditActionConstants::ACCEPT;
+    }
+
+    return false;
+  }
+
+  public function isStoryAboutObjectReject($object) {
+    $story = $this->getFeedStory();
+    $xaction = $story->getPrimaryTransaction();
+
+    if ($xaction->getTransactionType() == PhabricatorAuditActionConstants::ACTION) {
+      return $xaction->getNewValue() == PhabricatorAuditActionConstants::CONCERN;
+    }
+
+    return false;
+  }
+
   public function willPublishStory($commit) {
     $requests = id(new DiffusionCommitQuery())
       ->setViewer($this->getViewer())

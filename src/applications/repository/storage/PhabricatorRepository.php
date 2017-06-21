@@ -14,7 +14,8 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     PhabricatorDestructibleInterface,
     PhabricatorProjectInterface,
     PhabricatorSpacesInterface,
-    PhabricatorConduitResultInterface {
+    PhabricatorConduitResultInterface,
+    PhabricatorFulltextInterface {
 
   /**
    * Shortest hash we'll recognize in raw "a829f32" form.
@@ -45,6 +46,10 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   const BECAUSE_BRANCH_UNTRACKED = 'auto/notrack';
   const BECAUSE_BRANCH_NOT_AUTOCLOSE = 'auto/noclose';
   const BECAUSE_AUTOCLOSE_FORCED = 'auto/forced';
+
+  const LAYOUT_NONE = 'none';
+  const LAYOUT_STANDARD = 'standard';
+  const LAYOUT_CUSTOM = 'custom';
 
   const STATUS_ACTIVE = 'active';
   const STATUS_INACTIVE = 'inactive';
@@ -292,6 +297,52 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       ));
   }
 
+  public function getSubversionLayout() {
+    return $this->getDetail('svn-layout')
+      ? $this->getDetail('svn-layout')
+      : self::LAYOUT_NONE;
+  }
+
+  public function setSubversionLayout($layout) {
+    if ($this->getSubversionLayout() != $layout) {
+      $this->writeStatusMessage(
+        PhabricatorRepositoryStatusMessage::TYPE_NEEDS_UPDATE,
+        PhabricatorRepositoryStatusMessage::CODE_OKAY);
+    }
+
+    return $this->setDetail('svn-layout', $layout);
+  }
+
+  public function getSubversionTrunkFolder() {
+    if ($this->getSubversionLayout() == self::LAYOUT_STANDARD) {
+      return 'trunk';
+    }
+
+    return $this->getDetail('svn-trunk-folder')
+      ? $this->getDetail('svn-trunk-folder')
+      : 'trunk';
+  }
+
+  public function getSubversionBranchesFolder() {
+    if ($this->getSubversionLayout() == self::LAYOUT_STANDARD) {
+      return 'branches';
+    }
+
+    return $this->getDetail('svn-branches-folder')
+      ? $this->getDetail('svn-branches-folder')
+      : 'branches';
+  }
+
+  public function getSubversionTagsFolder() {
+    if ($this->getSubversionLayout() == self::LAYOUT_STANDARD) {
+      return 'tags';
+    }
+
+    return $this->getDetail('svn-tags-folder')
+      ? $this->getDetail('svn-tags-folder')
+      : 'tags';
+  }
+
   public function getSubversionBaseURI($commit = null) {
     $subpath = $this->getDetail('svn-subpath');
     if (!strlen($subpath)) {
@@ -329,6 +380,37 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     }
 
     return $uri;
+  }
+
+  public function getSubversionParentCommit($svn_revision) {
+    $svn_revision = (int)$svn_revision;
+
+    if ($svn_revision <= 1) {
+      return 0;
+    }
+
+    $parent_svn_revision = $svn_revision - 1;
+
+    // For fully imported repositories "$svn_revision - 1" assumption
+    // is always correct.
+    $subpath = $this->getDetail('svn-subpath');
+    if (!strlen($subpath)) {
+      return $parent_svn_revision;
+    }
+
+    list($err, $xml, $stderr) = $this->execRemoteCommand(
+      'log %s --xml --revision %d:1 --limit 1',
+      $this->getSubversionBaseURI(),
+      $parent_svn_revision);
+
+    if ($err) {
+      // Happens, when using 1st commit on a sub-path.
+      return $parent_svn_revision;
+    }
+
+    $log = new SimpleXMLElement($xml);
+
+    return (int)$log->logentry['revision'];
   }
 
   public function attachProjectPHIDs(array $project_phids) {
@@ -857,6 +939,16 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     return (bool)idx($spec, 'isTracked', false);
   }
 
+  public function supportsBranches() {
+    $vcs = $this->getVersionControlSystem();
+
+    if ($vcs == PhabricatorRepositoryType::REPOSITORY_TYPE_SVN) {
+      return $this->getSubversionLayout() != PhabricatorRepository::LAYOUT_NONE;
+    }
+
+    return true;
+  }
+
   public function getDefaultBranch() {
     $default = $this->getDetail('default-branch');
     if (strlen($default)) {
@@ -866,6 +958,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
     $default_branches = array(
       PhabricatorRepositoryType::REPOSITORY_TYPE_GIT        => 'master',
       PhabricatorRepositoryType::REPOSITORY_TYPE_MERCURIAL  => 'default',
+      PhabricatorRepositoryType::REPOSITORY_TYPE_SVN        => 'trunk',
     );
 
     return idx($default_branches, $this->getVersionControlSystem());
@@ -876,12 +969,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   }
 
   private function isBranchInFilter($branch, $filter_key) {
-    $vcs = $this->getVersionControlSystem();
-
-    $is_git = ($vcs == PhabricatorRepositoryType::REPOSITORY_TYPE_GIT);
-
-    $use_filter = ($is_git);
-    if (!$use_filter) {
+    if (!$this->supportsBranches()) {
       // If this VCS doesn't use filters, pass everything through.
       return true;
     }
@@ -1589,7 +1677,7 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
   }
 
   public function canUsePathTree() {
-    return !$this->isSVN();
+    return true;
   }
 
   public function canUseGitLFS() {
@@ -1928,8 +2016,29 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
           'Cluster hosts must correctly route their intracluster requests.'));
     }
 
+    if (count($results) > 1) {
+      if (!$this->supportsSynchronization()) {
+        throw new Exception(
+          pht(
+            'Repository "%s" is bound to multiple active repository hosts, '.
+            'but this repository does not support cluster synchronization. '.
+            'Declusterize this repository or move it to a service with only '.
+            'one host.',
+            $this->getDisplayName()));
+      }
+    }
+
     shuffle($results);
     return head($results);
+  }
+
+  public function supportsSynchronization() {
+    // TODO: For now, this is only supported for Git.
+    if (!$this->isGit()) {
+      return false;
+    }
+
+    return true;
   }
 
   public function getAlmanacServiceCacheKey() {
@@ -2570,6 +2679,13 @@ final class PhabricatorRepository extends PhabricatorRepositoryDAO
       id(new DiffusionRepositoryURIsSearchEngineAttachment())
         ->setAttachmentKey('uris'),
     );
+  }
+
+/* -(  PhabricatorFulltextInterface  )--------------------------------------- */
+
+
+  public function newFulltextEngine() {
+    return new PhabricatorRepositoryFulltextEngine();
   }
 
 }

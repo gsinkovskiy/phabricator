@@ -19,13 +19,19 @@ final class PHUIObjectItemView extends AphrontTagView {
   private $headIcons = array();
   private $disabled;
   private $imageURI;
+  private $imageHref;
   private $imageIcon;
   private $titleText;
   private $badge;
   private $countdownNum;
   private $countdownNoun;
-  private $launchButton;
+  private $sideColumn;
   private $coverImage;
+  private $description;
+
+  const AGE_FRESH = 'fresh';
+  const AGE_STALE = 'stale';
+  const AGE_OLD   = 'old';
 
   public function setDisabled($disabled) {
     $this->disabled = $disabled;
@@ -126,6 +132,11 @@ final class PHUIObjectItemView extends AphrontTagView {
     return $this;
   }
 
+  public function setImageHref($image_href) {
+    $this->imageHref = $image_href;
+    return $this;
+  }
+
   public function getImageURI() {
     return $this->imageURI;
   }
@@ -148,9 +159,39 @@ final class PHUIObjectItemView extends AphrontTagView {
     return $this;
   }
 
-  public function setEpoch($epoch) {
-    $date = phabricator_datetime($epoch, $this->getUser());
-    $this->addIcon('none', $date);
+  public function setDescription($description) {
+    $this->description = $description;
+    return $this;
+  }
+
+  public function setEpoch($epoch, $age = self::AGE_FRESH) {
+    $date = phabricator_datetime($epoch, $this->getViewer());
+
+    $relative = phutil_format_relative_time(time() - $epoch);
+
+    switch ($age) {
+      case self::AGE_FRESH:
+        $this->addIcon('none', $date);
+        break;
+      case self::AGE_STALE:
+        $attr = array(
+          'tip' => pht('Stale (%s)', $relative),
+          'class' => 'icon-age-stale',
+        );
+
+        $this->addIcon('fa-clock-o yellow', $date, $attr);
+        break;
+      case self::AGE_OLD:
+        $attr = array(
+          'tip' =>  pht('Old (%s)', $relative),
+          'class' => 'icon-age-old',
+        );
+        $this->addIcon('fa-clock-o red', $date, $attr);
+        break;
+      default:
+        throw new Exception(pht("Unknown age '%s'!", $age));
+    }
+
     return $this;
   }
 
@@ -217,9 +258,8 @@ final class PHUIObjectItemView extends AphrontTagView {
     return $this;
   }
 
-  public function setLaunchButton(PHUIButtonView $button) {
-    $button->setSize(PHUIButtonView::SMALL);
-    $this->launchButton = $button;
+  public function setSideColumn($column) {
+    $this->sideColumn = $column;
     return $this;
   }
 
@@ -334,6 +374,23 @@ final class PHUIObjectItemView extends AphrontTagView {
       ),
       $this->header);
 
+    $description_tag = null;
+    if ($this->description) {
+      $decription_id = celerity_generate_unique_node_id();
+      $description_tag = id(new PHUITagView())
+        ->setIcon('fa-ellipsis-h')
+        ->addClass('phui-oi-description-tag')
+        ->setType(PHUITagView::TYPE_SHADE)
+        ->setColor(PHUITagView::COLOR_GREY)
+        ->addSigil('jx-toggle-class')
+        ->setSlimShady(true)
+        ->setMetaData(array(
+          'map' => array(
+            $decription_id => 'phui-oi-description-reveal',
+          ),
+        ));
+    }
+
     // Wrap the header content in a <span> with the "slippery" sigil. This
     // prevents us from beginning a drag if you click the text (like "T123"),
     // but not if you click the white space after the header.
@@ -351,6 +408,7 @@ final class PHUIObjectItemView extends AphrontTagView {
           $this->headIcons,
           $header_name,
           $header_link,
+          $description_tag,
         )));
 
     $icons = array();
@@ -453,6 +511,16 @@ final class PHUIObjectItemView extends AphrontTagView {
         $this->subhead);
     }
 
+    if ($this->description) {
+      $subhead = phutil_tag(
+        'div',
+        array(
+          'class' => 'phui-oi-subhead phui-oi-description',
+          'id' => $decription_id,
+        ),
+        $this->description);
+    }
+
     if ($icons) {
       $icons = phutil_tag(
         'div',
@@ -541,11 +609,12 @@ final class PHUIObjectItemView extends AphrontTagView {
         $this->getImageIcon());
     }
 
-    if ($image && $this->href) {
+    if ($image && (strlen($this->href) || strlen($this->imageHref))) {
+      $image_href = ($this->imageHref) ? $this->imageHref : $this->href;
       $image = phutil_tag(
         'a',
         array(
-          'href' => $this->href,
+          'href' => $image_href,
         ),
         $image);
     }
@@ -611,14 +680,15 @@ final class PHUIObjectItemView extends AphrontTagView {
         ));
     }
 
-    if ($this->launchButton) {
+    /* Fixed width, right column container. */
+    if ($this->sideColumn) {
       $column2 = phutil_tag(
         'div',
         array(
-          'class' => 'phui-oi-col2 phui-oi-launch-button',
+          'class' => 'phui-oi-col2 phui-oi-side-column',
         ),
         array(
-          $this->launchButton,
+          $this->sideColumn,
         ));
     }
 

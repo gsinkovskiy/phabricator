@@ -13,7 +13,6 @@ final class DiffusionCommitTagsController extends DiffusionController {
     }
 
     $drequest = $this->getDiffusionRequest();
-    $repository = $drequest->getRepository();
 
     $tag_limit = 10;
     $tags = DiffusionRepositoryTag::newFromConduit(

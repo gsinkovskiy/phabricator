@@ -88,6 +88,9 @@ abstract class DoorkeeperFeedStoryPublisher extends Phobject {
 
   abstract public function isStoryAboutObjectCreation($object);
   abstract public function isStoryAboutObjectClosure($object);
+  abstract public function isStoryAboutObjectReview($object);
+  abstract public function isStoryAboutObjectAccept($object);
+  abstract public function isStoryAboutObjectReject($object);
   abstract public function getOwnerPHID($object);
   abstract public function getActiveUserPHIDs($object);
   abstract public function getPassiveUserPHIDs($object);

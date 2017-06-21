@@ -278,6 +278,67 @@ final class DiffusionCommitController extends DiffusionController {
         $change_header,
         $warning_view);
 
+      // FIXME: BEGIN1
+      $changes_anchor = id(new PhabricatorAnchorView())
+              ->setAnchorName('changes')
+              ->setNavigationMarker(true);
+      $change_table->appendChild($changes_anchor);
+      $whitespace = $request->getStr(
+        'whitespace',
+        DifferentialChangesetParser::WHITESPACE_SHOW_ALL);
+
+      $options = array(
+        DifferentialChangesetParser::WHITESPACE_IGNORE_ALL => pht('Ignore All'),
+        DifferentialChangesetParser::WHITESPACE_IGNORE_MOST => pht('Ignore Most'),
+        DifferentialChangesetParser::WHITESPACE_IGNORE_TRAILING =>
+          pht('Ignore Trailing'),
+        DifferentialChangesetParser::WHITESPACE_SHOW_ALL => pht('Show All'),
+      );
+
+      foreach ($options as $value => $label) {
+        $options[$value] = phutil_tag(
+          'option',
+          array(
+            'value' => $value,
+            'selected' => ($value == $whitespace)
+            ? 'selected'
+            : null,
+          ),
+          $label);
+      }
+      $select = phutil_tag('select', array('name' => 'whitespace'), $options);
+
+      $show_changes = phutil_tag(
+        'div',
+        array(
+          'class' => 'differential-update-history-footer',
+        ),
+        array(
+          phutil_tag(
+            'label',
+            array(),
+            array(
+              pht('Whitespace Changes:'),
+              $select,
+            )),
+          phutil_tag(
+            'button',
+            array(),
+            pht('Show Changes')),
+        ));
+
+      $show_changes_form = phabricator_form(
+        $viewer,
+        array(
+          'action' => '#changes',
+        ),
+        array(
+          $show_changes,
+        ));
+
+      $change_table->appendChild($show_changes_form);
+      // FIXME: END1
+
       $vcs = $repository->getVersionControlSystem();
       switch ($vcs) {
         case PhabricatorRepositoryType::REPOSITORY_TYPE_SVN:
@@ -341,6 +402,7 @@ final class DiffusionCommitController extends DiffusionController {
       $change_list->setVisibleChangesets($visible_changesets);
       $change_list->setRenderingReferences($references);
       $change_list->setRenderURI($repository->getPathURI('diff/'));
+      $change_list->setWhitespace($whitespace);
       $change_list->setRepository($repository);
       $change_list->setUser($viewer);
       $change_list->setBackground(PHUIObjectBoxView::BLUE_PROPERTY);
@@ -705,7 +767,11 @@ final class DiffusionCommitController extends DiffusionController {
     $timeline = $this->buildTransactionTimeline(
       $commit,
       new PhabricatorAuditTransactionQuery());
+
     $commit->willRenderTimeline($timeline, $this->getRequest());
+
+    $timeline->setQuoteRef($commit->getMonogram());
+
     return $timeline;
   }
 
@@ -715,8 +781,6 @@ final class DiffusionCommitController extends DiffusionController {
 
     $request = $this->getRequest();
     $viewer = $request->getUser();
-
-    Javelin::initBehavior('differential-keyboard-navigation');
 
     // TODO: This is pretty awkward, unify the CSS between Diffusion and
     // Differential better.
@@ -802,6 +866,27 @@ final class DiffusionCommitController extends DiffusionController {
       ->setHref($request->getRequestURI()->alter('diff', true))
       ->setIcon('fa-download');
     $curtain->addAction($action);
+
+    $watch_audit_status = array(
+      PhabricatorAuditCommitStatusConstants::CONCERN_RAISED,
+      PhabricatorAuditCommitStatusConstants::PARTIALLY_AUDITED,
+    );
+
+    if (in_array($commit->getAuditStatus(), $watch_audit_status)) {
+      Javelin::initBehavior('diffusion-copy-fix-message');
+
+      list(, $commit_message) = $commit->parseCommitMessage();
+      $commit_id = $repository->getMonogram().$commit->getCommitIdentifier();
+      $fix_message = '[fixes: '.$commit_id.'] '.$commit_message;
+
+      $action = id(new PhabricatorActionView())
+        ->setName(pht('Copy Fix Message'))
+        ->setHref('#')
+        ->addSigil('copy-fix-message')
+        ->setMetadata(array('fix-message' => $fix_message))
+        ->setIcon('fa-medkit');
+      $curtain->addAction($action);
+    }
 
     $relationship_list = PhabricatorObjectRelationshipList::newForObject(
       $viewer,

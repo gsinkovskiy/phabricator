@@ -336,7 +336,8 @@ final class PhabricatorAuditInlineComment
 
 
   public function getMarkupFieldKey($field) {
-    return 'AI:'.$this->getID();
+    $content = $this->getMarkupText($field);
+    return PhabricatorMarkupEngine::digestRemarkupContent($this, $content);
   }
 
   public function newMarkupEngine($field) {

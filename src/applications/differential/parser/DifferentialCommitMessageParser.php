@@ -25,6 +25,7 @@ final class DifferentialCommitMessageParser extends Phobject {
   private $labelMap;
   private $titleKey;
   private $summaryKey;
+  private $jiraIssuesKey;
   private $errors;
   private $commitMessageFields;
   private $raiseMissingFieldErrors = true;
@@ -32,6 +33,7 @@ final class DifferentialCommitMessageParser extends Phobject {
   public static function newStandardParser(PhabricatorUser $viewer) {
     $key_title = DifferentialTitleCommitMessageField::FIELDKEY;
     $key_summary = DifferentialSummaryCommitMessageField::FIELDKEY;
+    $key_jira_issues = DifferentialJIRAIssuesCommitMessageField::FIELDKEY;
 
     $field_list = DifferentialCommitMessageField::newEnabledFields($viewer);
 
@@ -39,7 +41,8 @@ final class DifferentialCommitMessageParser extends Phobject {
       ->setViewer($viewer)
       ->setCommitMessageFields($field_list)
       ->setTitleKey($key_title)
-      ->setSummaryKey($key_summary);
+      ->setSummaryKey($key_summary)
+      ->setJiraIssuesKey($key_jira_issues);
   }
 
 
@@ -126,6 +129,15 @@ final class DifferentialCommitMessageParser extends Phobject {
   }
 
 
+  /**
+   * @task config
+   */
+  public function setJiraIssuesKey($jira_issues_key) {
+    $this->jiraIssuesKey = $jira_issues_key;
+    return $this;
+  }
+
+
 /* -(  Parsing Messages  )--------------------------------------------------- */
 
 
@@ -138,6 +150,7 @@ final class DifferentialCommitMessageParser extends Phobject {
     $label_map = $this->getLabelMap();
     $key_title = $this->titleKey;
     $key_summary = $this->summaryKey;
+    $key_jira_issues = $this->jiraIssuesKey;
 
     if (!$key_title || !$key_summary || ($label_map === null)) {
       throw new Exception(
@@ -254,7 +267,24 @@ final class DifferentialCommitMessageParser extends Phobject {
       }
     }
 
+    // Detect JIRA issue keys in commit message.
+    if (in_array($this->jiraIssuesKey, $label_map)
+      && !idx($fields, $this->jiraIssuesKey)) {
+      $jira_issues = $this->extractJiraIssues($corpus);
+      if ($jira_issues) {
+        $fields[$this->jiraIssuesKey] = $jira_issues;
+      }
+    }
+
     return $fields;
+  }
+
+
+  private function extractJiraIssues($corpus) {
+    $parts = null;
+    preg_match_all('/\b[[:upper:]]+\-\d+\b/', $corpus, $parts);
+
+    return implode(', ', $parts[0]);
   }
 
 

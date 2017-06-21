@@ -12,6 +12,10 @@ final class PhabricatorRepositoryTransaction
   const TYPE_TRACK_ONLY = 'repo:track-only';
   const TYPE_AUTOCLOSE_ONLY = 'repo:autoclose-only';
   const TYPE_SVN_SUBPATH = 'repo:svn-subpath';
+  const TYPE_SVN_LAYOUT = 'repo:svn-layout';
+  const TYPE_SVN_TRUNK_FOLDER = 'repo:svn-trunk-folder';
+  const TYPE_SVN_BRANCHES_FOLDER = 'repo:svn-branches-folder';
+  const TYPE_SVN_TAGS_FOLDER = 'repo:svn-tags-folder';
   const TYPE_NOTIFY = 'repo:notify';
   const TYPE_AUTOCLOSE = 'repo:autoclose';
   const TYPE_PUSH_POLICY = 'repo:push-policy';
@@ -265,6 +269,85 @@ final class PhabricatorRepositoryTransaction
         } else {
           return pht(
             '%s changed the import path from "%s" to "%s".',
+            $this->renderHandleLink($author_phid),
+            $old,
+            $new);
+        }
+        break;
+      case self::TYPE_SVN_LAYOUT:
+        $layout_names = array(
+          PhabricatorRepository::LAYOUT_NONE => pht('None'),
+          PhabricatorRepository::LAYOUT_STANDARD => pht('Standard'),
+          PhabricatorRepository::LAYOUT_CUSTOM => pht('Custom'),
+        );
+
+        if (!strlen($new)) {
+          return pht(
+            '%s restored default value for repository layout.',
+            $this->renderHandleLink($author_phid),
+            idx($layout_names, $old, 'Unknown'));
+        } else if (!strlen($old)) {
+          return pht(
+            '%s set the repository layout to "%s".',
+            $this->renderHandleLink($author_phid),
+            idx($layout_names, $new, 'Unknown'));
+        } else {
+          return pht(
+            '%s changed the repository layout from "%s" to "%s".',
+            $this->renderHandleLink($author_phid),
+            idx($layout_names, $old, 'Unknown'),
+            idx($layout_names, $new, 'Unknown'));
+        }
+        break;
+      case self::TYPE_SVN_TRUNK_FOLDER:
+        if (!strlen($new)) {
+          return pht(
+            '%s restored default value for repository trunk folder.',
+            $this->renderHandleLink($author_phid));
+        } else if (!strlen($old)) {
+          return pht(
+            '%s set the repository trunk folder to "%s".',
+            $this->renderHandleLink($author_phid),
+            $new);
+        } else {
+          return pht(
+            '%s changed the repository trunk folder from "%s" to "%s".',
+            $this->renderHandleLink($author_phid),
+            $old,
+            $new);
+        }
+        break;
+      case self::TYPE_SVN_BRANCHES_FOLDER:
+        if (!strlen($new)) {
+          return pht(
+            '%s restored default value for repository branches folder.',
+            $this->renderHandleLink($author_phid));
+        } else if (!strlen($old)) {
+          return pht(
+            '%s set the repository branches folder to "%s".',
+            $this->renderHandleLink($author_phid),
+            $new);
+        } else {
+          return pht(
+            '%s changed the repository branches folder from "%s" to "%s".',
+            $this->renderHandleLink($author_phid),
+            $old,
+            $new);
+        }
+        break;
+      case self::TYPE_SVN_TAGS_FOLDER:
+        if (!strlen($new)) {
+          return pht(
+            '%s restored default value for repository tags folder.',
+            $this->renderHandleLink($author_phid));
+        } else if (!strlen($old)) {
+          return pht(
+            '%s set the repository tags folder to "%s".',
+            $this->renderHandleLink($author_phid),
+            $new);
+        } else {
+          return pht(
+            '%s changed the repository tags folder from "%s" to "%s".',
             $this->renderHandleLink($author_phid),
             $old,
             $new);

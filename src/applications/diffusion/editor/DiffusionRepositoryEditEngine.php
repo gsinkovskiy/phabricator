@@ -24,6 +24,10 @@ final class DiffusionRepositoryEditEngine
     return true;
   }
 
+  public function getQuickCreateOrderVector() {
+    return id(new PhutilSortVector())->addInt(300);
+  }
+
   public function getEngineName() {
     return pht('Repositories');
   }
@@ -235,6 +239,15 @@ final class DiffusionRepositoryEditEngine
       'you can set a path in **Import Only**. Phabricator will ignore '.
       'commits which do not affect this path.');
 
+    $layout_instructions = pht(
+      "If a repository has a **Layout** (e.g. `/trunk/..., ".
+      "/branches/NAME/..., /tags/NAME/...``), then it needs to be ".
+      "specified to enable detection of branches and tags.".
+      "\n\n".
+      "By setting **Layout** to **Custom** it's possible to account for ".
+      "non-standard repository folder names by changing **Trunk Folder**, ".
+      "**Branches Folder** and **Tags Folder** settings.");
+
     return array(
       id(new PhabricatorSelectEditField())
         ->setKey('vcs')
@@ -347,6 +360,8 @@ final class DiffusionRepositoryEditEngine
         ->setConduitDescription(pht('Set the autoclose branches.'))
         ->setConduitTypeDescription(pht('New default tracked branchs.'))
         ->setValue($autoclose_value),
+
+
       id(new PhabricatorTextEditField())
         ->setKey('importOnly')
         ->setLabel(pht('Import Only'))
@@ -358,6 +373,38 @@ final class DiffusionRepositoryEditEngine
         ->setConduitTypeDescription(pht('New subpath to import.'))
         ->setValue($object->getDetail('svn-subpath'))
         ->setControlInstructions($subpath_instructions),
+      id(new PhabricatorSelectEditField())
+        ->setKey('layout')
+        ->setLabel(pht('Layout'))
+        ->setTransactionType(PhabricatorRepositoryTransaction::TYPE_SVN_LAYOUT)
+        ->setIsCopyable(true)
+        ->setOptions(array(
+            PhabricatorRepository::LAYOUT_NONE => pht('None'),
+            PhabricatorRepository::LAYOUT_STANDARD => pht('Standard'),
+            PhabricatorRepository::LAYOUT_CUSTOM => pht('Custom'),))
+        ->setValue($object->getSubversionLayout())
+        ->setControlInstructions($layout_instructions),
+      id(new PhabricatorTextEditField())
+        ->setKey('trunk_folder')
+        ->setLabel(pht('Trunk Folder'))
+        ->setTransactionType(
+          PhabricatorRepositoryTransaction::TYPE_SVN_TRUNK_FOLDER)
+        ->setIsCopyable(true)
+        ->setValue($object->getDetail('svn-trunk-folder')),
+      id(new PhabricatorTextEditField())
+        ->setKey('branches_folder')
+        ->setLabel(pht('Branches Folder'))
+        ->setTransactionType(
+          PhabricatorRepositoryTransaction::TYPE_SVN_BRANCHES_FOLDER)
+        ->setIsCopyable(true)
+        ->setValue($object->getDetail('svn-branches-folder')),
+      id(new PhabricatorTextEditField())
+        ->setKey('tags_folder')
+        ->setLabel(pht('Tags Folder'))
+        ->setTransactionType(
+          PhabricatorRepositoryTransaction::TYPE_SVN_TAGS_FOLDER)
+        ->setIsCopyable(true)
+        ->setValue($object->getDetail('svn-tags-folder')),
       id(new PhabricatorTextEditField())
         ->setKey('stagingAreaURI')
         ->setLabel(pht('Staging Area URI'))

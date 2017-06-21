@@ -75,6 +75,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
 
   const PROPERTY_JIRA_NAME = 'oauth1:jira:name';
   const PROPERTY_JIRA_URI = 'oauth1:jira:uri';
+  const PROPERTY_JIRA_REVIEWER_FIELD = 'oauth1:jira:reviewer_field';
+  const PROPERTY_JIRA_REVIEW_TRANSITION = 'oauth1:jira:review_transition';
+  const PROPERTY_JIRA_ACCEPT_TRANSITION = 'oauth1:jira:accept_transition';
+  const PROPERTY_JIRA_REJECT_TRANSITION = 'oauth1:jira:reject_transition';
   const PROPERTY_PUBLIC_KEY = 'oauth1:jira:key:public';
   const PROPERTY_PRIVATE_KEY = 'oauth1:jira:key:private';
   const PROPERTY_REPORT_LINK = 'oauth1:jira:report:link';
@@ -88,6 +92,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
     return array(
       self::PROPERTY_JIRA_NAME => $this->getProviderDomain(),
       self::PROPERTY_JIRA_URI => $uri,
+      self::PROPERTY_JIRA_REVIEWER_FIELD => $config->getProperty(self::PROPERTY_JIRA_REVIEWER_FIELD),
+      self::PROPERTY_JIRA_REVIEW_TRANSITION => $config->getProperty(self::PROPERTY_JIRA_REVIEW_TRANSITION),
+      self::PROPERTY_JIRA_ACCEPT_TRANSITION => $config->getProperty(self::PROPERTY_JIRA_ACCEPT_TRANSITION),
+      self::PROPERTY_JIRA_REJECT_TRANSITION => $config->getProperty(self::PROPERTY_JIRA_REJECT_TRANSITION),
     );
   }
 
@@ -102,6 +110,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
     return array(
       self::PROPERTY_JIRA_NAME => $name,
       self::PROPERTY_JIRA_URI => $request->getStr(self::PROPERTY_JIRA_URI),
+      self::PROPERTY_JIRA_REVIEWER_FIELD => $request->getStr(self::PROPERTY_JIRA_REVIEWER_FIELD),
+      self::PROPERTY_JIRA_REVIEW_TRANSITION => $request->getStr(self::PROPERTY_JIRA_REVIEW_TRANSITION),
+      self::PROPERTY_JIRA_ACCEPT_TRANSITION => $request->getStr(self::PROPERTY_JIRA_ACCEPT_TRANSITION),
+      self::PROPERTY_JIRA_REJECT_TRANSITION => $request->getStr(self::PROPERTY_JIRA_REJECT_TRANSITION),
       self::PROPERTY_REPORT_LINK =>
         $request->getInt(self::PROPERTY_REPORT_LINK, 0),
       self::PROPERTY_REPORT_COMMENT =>
@@ -119,6 +131,10 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
 
     $key_name = self::PROPERTY_JIRA_NAME;
     $key_uri = self::PROPERTY_JIRA_URI;
+    $key_reviewer_field = self::PROPERTY_JIRA_REVIEWER_FIELD;
+    $key_review_transition = self::PROPERTY_JIRA_REVIEW_TRANSITION;
+    $key_accept_transition = self::PROPERTY_JIRA_ACCEPT_TRANSITION;
+    $key_reject_transition = self::PROPERTY_JIRA_REJECT_TRANSITION;
 
     if (!strlen($values[$key_name])) {
       $errors[] = pht('JIRA instance name is required.');
@@ -142,10 +158,20 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
       }
     }
 
+    if (strlen($values[$key_review_transition]) && !strlen($values[$key_reviewer_field])) {
+      $errors[] = pht(
+        '"JIRA Reviewer Field" is required, when "JIRA Review Transition" is specified.');
+      $issues[$key_reviewer_field] = pht('Invalid');
+    }
+
     if (!$errors && $is_setup) {
       $config = $this->getProviderConfig();
 
       $config->setProviderDomain($values[$key_name]);
+      $config->setProperty($key_reviewer_field, $values[$key_reviewer_field]);
+      $config->setProperty($key_review_transition, $values[$key_review_transition]);
+      $config->setProperty($key_accept_transition, $values[$key_accept_transition]);
+      $config->setProperty($key_reject_transition, $values[$key_reject_transition]);
 
       $consumer_key = 'phjira.'.Filesystem::readRandomCharacters(16);
       list($public, $private) = PhutilJIRAAuthAdapter::newJIRAKeypair();
@@ -232,6 +258,8 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
               phutil_tag('tt', array(), 'https://jira.mycompany.com/')))
           ->setError($e_uri));
 
+    $this->addTransitionFields($request, $form, $values, $issues);
+
     if (!$is_setup) {
       $config = $this->getProviderConfig();
 
@@ -287,7 +315,118 @@ final class PhabricatorJIRAAuthProvider extends PhabricatorOAuth1AuthProvider {
                   'emails Phabricator sends.')),
               $this->shouldCreateJIRAComment()));
     }
+  }
 
+  private function addTransitionFields(
+    AphrontRequest $request,
+    AphrontFormView $form,
+    array $values,
+    array $issues) {
+
+    try {
+      $jira_fields = $this->getJIRAFields($this->getExternalAccount($request));
+    }
+    catch (DoorkeeperMissingLinkException $e) {
+      $jira_fields = array();
+    }
+
+    $v_reviewer_field = $values[self::PROPERTY_JIRA_REVIEWER_FIELD];
+    $e_reviewer_field = idx($issues, self::PROPERTY_JIRA_REVIEWER_FIELD);
+
+    $v_review_transition = $values[self::PROPERTY_JIRA_REVIEW_TRANSITION];
+    $v_accept_transition = $values[self::PROPERTY_JIRA_ACCEPT_TRANSITION];
+    $v_reject_transition = $values[self::PROPERTY_JIRA_REJECT_TRANSITION];
+
+    if ($jira_fields) {
+      $reviewer_control = id(new AphrontFormSelectControl())
+        ->setOptions(array('' => 'Please Select') + $jira_fields);
+
+    } else {
+      $reviewer_control = new AphrontFormTextControl();
+    }
+
+    $reviewer_control
+      ->setLabel(pht('JIRA Reviewer Field'))
+      ->setValue($v_reviewer_field)
+      ->setName(self::PROPERTY_JIRA_REVIEWER_FIELD)
+      ->setCaption(
+        pht(
+          'JIRA issue field, that stores reviewer user from '.
+          'associated object (e.g. %s or %s).',
+          phutil_tag('tt', array(), 'Differential Revision'),
+          phutil_tag('tt', array(), 'Commit')))
+      ->setError($e_reviewer_field);
+
+    $form
+      ->appendChild(
+        id(new AphrontFormTextControl())
+          ->setLabel(pht('JIRA Review Transition'))
+          ->setValue($v_review_transition)
+          ->setName(self::PROPERTY_JIRA_REVIEW_TRANSITION)
+          ->setCaption(
+            pht(
+              'JIRA issue transition that will be executed, when '.
+              'associated object (e.g. %s or %s) is scheduled for review.',
+              phutil_tag('tt', array(), 'Differential Revision'),
+              phutil_tag('tt', array(), 'Commit'))))
+      ->appendChild($reviewer_control)
+      ->appendChild(
+        id(new AphrontFormTextControl())
+          ->setLabel(pht('JIRA Accept Transition'))
+          ->setValue($v_accept_transition)
+          ->setName(self::PROPERTY_JIRA_ACCEPT_TRANSITION)
+          ->setCaption(
+            pht(
+              'JIRA issue transition that will be executed, when '.
+              'associated object (e.g. %s or %s) is accepted.',
+              phutil_tag('tt', array(), 'Differential Revision'),
+              phutil_tag('tt', array(), 'Commit'))))
+      ->appendChild(
+        id(new AphrontFormTextControl())
+          ->setLabel(pht('JIRA Reject Transition'))
+          ->setValue($v_reject_transition)
+          ->setName(self::PROPERTY_JIRA_REJECT_TRANSITION)
+          ->setCaption(
+            pht(
+              'JIRA issue transition that will be executed, when '.
+              'associated object (e.g. %s or %s) is rejected.',
+              phutil_tag('tt', array(), 'Differential Revision'),
+              phutil_tag('tt', array(), 'Commit'))));
+  }
+
+  private function getJIRAFields(PhabricatorExternalAccount $account) {
+    $issue_fields = $this->newJIRAFuture(
+      $account,
+      'rest/api/2/field',
+      'GET')->resolveJSON();
+
+    $all_fields = array();
+    foreach ($issue_fields as $issue_field) {
+      $all_fields[$issue_field['id']] = $issue_field['name'];
+    }
+
+    return $all_fields;
+  }
+
+  private function getExternalAccount(AphrontRequest $request) {
+    $viewer = $request->getUser();
+
+    $account = id(new PhabricatorExternalAccountQuery())
+      ->setViewer($viewer)
+      ->withUserPHIDs(array($viewer->getPHID()))
+      ->withAccountTypes(array($this->getProviderType()))
+      ->withAccountDomains(array($this->getProviderDomain()))
+      ->requireCapabilities(
+        array(
+          PhabricatorPolicyCapability::CAN_VIEW,
+        ))
+      ->executeOne();
+
+    if (!$account) {
+      throw new DoorkeeperMissingLinkException();
+    }
+
+    return $account;
   }
 
   /**

@@ -6,6 +6,7 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
     PhabricatorPolicyInterface,
     PhabricatorSubscribableInterface,
     PhabricatorFlaggableInterface,
+    PhabricatorAuthorAwareInterface,
     PhabricatorTokenReceiverInterface,
     PhabricatorProjectInterface,
     PhabricatorDestructibleInterface,
@@ -21,8 +22,8 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
   protected $question;
   protected $description;
   protected $authorPHID;
-  protected $responseVisibility;
-  protected $shuffle;
+  protected $responseVisibility = 0;
+  protected $shuffle = 0;
   protected $method;
   protected $mailKey;
   protected $viewPolicy;
@@ -54,7 +55,7 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
       self::CONFIG_COLUMN_SCHEMA => array(
         'question' => 'text255',
         'responseVisibility' => 'uint32',
-        'shuffle' => 'uint32',
+        'shuffle' => 'bool',
         'method' => 'uint32',
         'description' => 'text',
         'isClosed' => 'bool',
@@ -110,6 +111,10 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
 
   public function getMonogram() {
     return 'V'.$this->getID();
+  }
+
+  public function getURI() {
+    return '/'.$this->getMonogram();
   }
 
   public function save() {
@@ -213,6 +218,14 @@ final class PhabricatorSlowvotePoll extends PhabricatorSlowvoteDAO
 
   public function getSpacePHID() {
     return $this->spacePHID;
+  }
+
+
+/* -(  PhabricatorAuthorAwareInterface  )----------------------------------- */
+
+
+  public function getAuthor() {
+    return $this->getAuthorPHID();
   }
 
 }

@@ -186,10 +186,6 @@ final class PhabricatorExtraConfigSetupCheck extends PhabricatorSetupCheck {
       'Configuration of the notification server has changed substantially. '.
       'For discussion, see T10794.');
 
-    $stale_reason = pht(
-      'The Differential revision list view age UI elements have been removed '.
-      'to simplify the interface.');
-
     $global_settings_reason = pht(
       'The "Re: Prefix" and "Vary Subjects" settings are now configured '.
       'in global settings.');
@@ -197,6 +193,10 @@ final class PhabricatorExtraConfigSetupCheck extends PhabricatorSetupCheck {
     $dashboard_reason = pht(
         'This option has been removed, you can use Dashboards to provide '.
         'homepage customization. See T11533 for more details.');
+
+    $elastic_reason = pht(
+        'Elasticsearch is now configured with "%s".',
+        'cluster.search');
 
     $ancient_config += array(
       'phid.external-loaders' =>
@@ -327,9 +327,6 @@ final class PhabricatorExtraConfigSetupCheck extends PhabricatorSetupCheck {
         'Inline comments are now always rendered with a limited amount '.
         'of context.'),
 
-      'differential.days-fresh' => $stale_reason,
-      'differential.days-stale' => $stale_reason,
-
       'metamta.re-prefix' => $global_settings_reason,
       'metamta.vary-subjects' => $global_settings_reason,
 
@@ -348,6 +345,10 @@ final class PhabricatorExtraConfigSetupCheck extends PhabricatorSetupCheck {
       'mysql.configuration-provider' => pht(
         'Phabricator now has application-level management of partitioning '.
         'and replicas.'),
+
+      'search.elastic.host' => $elastic_reason,
+      'search.elastic.namespace' => $elastic_reason,
+
     );
 
     return $ancient_config;
